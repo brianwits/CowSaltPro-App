@@ -9,8 +9,7 @@ class DataManager:
 
     def ensure_data_files_exist(self):
         """Create data files if they don't exist"""
-        if not os.path.exists(self.data_dir):
-            os.makedirs(self.data_dir)
+        os.makedirs(self.data_dir, exist_ok=True)
 
         # Initialize products.csv
         if not os.path.exists(f"{self.data_dir}/products.csv"):
@@ -51,16 +50,36 @@ class DataManager:
             }).to_csv(f"{self.data_dir}/cashbook.csv", index=False)
 
     def get_products(self):
-        return pd.read_csv(f"{self.data_dir}/products.csv")
+        """Get all products"""
+        try:
+            return pd.read_csv(f"{self.data_dir}/products.csv")
+        except Exception as e:
+            st.error(f"Error reading products: {str(e)}")
+            return pd.DataFrame()
 
     def get_transactions(self):
-        return pd.read_csv(f"{self.data_dir}/transactions.csv")
+        """Get all transactions"""
+        try:
+            return pd.read_csv(f"{self.data_dir}/transactions.csv")
+        except Exception as e:
+            st.error(f"Error reading transactions: {str(e)}")
+            return pd.DataFrame()
 
     def get_inventory(self):
-        return pd.read_csv(f"{self.data_dir}/inventory.csv")
+        """Get current inventory"""
+        try:
+            return pd.read_csv(f"{self.data_dir}/inventory.csv")
+        except Exception as e:
+            st.error(f"Error reading inventory: {str(e)}")
+            return pd.DataFrame()
 
     def get_cashbook(self):
-        return pd.read_csv(f"{self.data_dir}/cashbook.csv")
+        """Get cashbook entries"""
+        try:
+            return pd.read_csv(f"{self.data_dir}/cashbook.csv")
+        except Exception as e:
+            st.error(f"Error reading cashbook: {str(e)}")
+            return pd.DataFrame()
 
     def add_transaction(self, product_id, quantity, type_of_transaction, amount):
         transactions = self.get_transactions()
