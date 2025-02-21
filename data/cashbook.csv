@@ -1,0 +1,6 @@
+date,description,type,amount,payment_method
+2024-01-15 09:30:00,Sale of Regular Cow Salt,Income,7500.00,Cash
+2024-01-15 11:45:00,Sale of Premium Cow Salt,Income,6000.00,M-PESA
+2024-01-15 14:20:00,Purchase of Bulk Salt,Expense,5500.00,Bank Transfer
+2024-01-16 10:15:00,Sale of Regular Cow Salt,Income,3750.00,M-PESA
+2024-01-16 16:30:00,Sale of Mineral Enhanced Salt,Income,3750.00,Cash

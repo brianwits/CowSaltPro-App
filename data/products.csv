@@ -1,0 +1,6 @@
+product_id,name,price,reorder_level
+SALT001,Regular Cow Salt 1kg,150.00,100
+SALT002,Premium Cow Salt 1kg,200.00,75
+SALT003,Bulk Cow Salt 5kg,650.00,50
+SALT004,Mineral Enhanced Salt 1kg,250.00,60
+SALT005,Iodized Cow Salt 1kg,180.00,80
