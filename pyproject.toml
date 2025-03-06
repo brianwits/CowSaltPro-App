@@ -1,12 +1,18 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
-name = "repl-nix-workspace"
-version = "0.1.0"
-description = "Add your description here"
-requires-python = ">=3.11"
+name = "cowsaltpro"
+version = "1.0.0"
+description = "ERP & POS System for Cow Salt Production"
+requires-python = ">=3.8"
 dependencies = [
-    "components>=0.0.1a0",
-    "pandas>=2.2.3",
-    "plotly>=6.0.0",
-    "streamlit>=1.42.2",
-    "trafilatura>=2.0.0",
+    "pandas",
+    "plotly",
+    "pyqt6",
+    "matplotlib",
+    "sqlalchemy",
+    "bcrypt",
+    "uuid",
 ]

@@ -1,18 +1,16 @@
-import { Product, Customer, Sale, SaleItem, ProductCreationAttributes, CustomerCreationAttributes, SaleCreationAttributes, SaleItemCreationAttributes } from '../database/models';
-import { Op, Sequelize } from 'sequelize';
-import { sequelize } from '../database/sequelize';
-import type { 
-  Product as ProductType,
-  SaleItem as SaleItemType,
-  Sale as SaleType,
-} from '../database/models';
-
-export class ServiceError extends Error {
-  constructor(message: string, public code: string) {
-    super(message);
-    this.name = 'ServiceError';
-  }
-}
+import { Model, Op, Transaction } from 'sequelize';
+import {
+  Product,
+  Customer,
+  Sale,
+  SaleItem,
+  sequelize,
+  ProductCreationAttributes,
+  CustomerCreationAttributes,
+  SaleCreationAttributes,
+  SaleItemCreationAttributes,
+} from '../models';
+import { ServiceError, ErrorCodes, createError, isError } from '../utils/errors';
 
 export interface DashboardStats {
   totalSales: number;
@@ -21,125 +19,137 @@ export interface DashboardStats {
   lowStockProducts: number;
 }
 
-interface StockAdjustment {
+export interface SalesAnalytics {
+  totalSales: number;
+  totalRevenue: number;
+  averageOrderValue: number;
+  trend: {
+    date: string;
+    sales: number;
+    revenue: number;
+  }[];
+  summary: {
+    label: string;
+    value: number;
+    change: number;
+  }[];
+}
+
+export interface TopProduct {
+  id: number;
+  name: string;
+  totalQuantity: number;
+  totalRevenue: number;
+}
+
+export interface StockAdjustment {
   productId: number;
   quantity: number;
   type: 'increase' | 'decrease';
   reason: string;
 }
 
-export interface SalesAnalytics {
-  trend: Array<{
-    date: string;
-    sales: number;
-    revenue: number;
-  }>;
-  summary: Array<{
-    label: string;
-    value: number | string;
-    change: number;
-  }>;
-}
-
-export interface TopProduct {
-  name: string;
-  value: number;
-}
-
 export class DataService {
+  private static instance: DataService;
+
+  private constructor() {}
+
+  static getInstance(): DataService {
+    if (!DataService.instance) {
+      DataService.instance = new DataService();
+    }
+    return DataService.instance;
+  }
+
   // Product Operations
-  async getProducts(search?: string): Promise<ProductType[]> {
+  async getProducts(search?: string): Promise<Product[]> {
     try {
       if (search) {
         return await Product.findAll({
           where: {
             [Op.or]: [
               { name: { [Op.like]: `%${search}%` } },
-              { description: { [Op.like]: `%${search}%` } }
-            ]
+              { description: { [Op.like]: `%${search}%` } },
+            ],
           },
-          order: [['name', 'ASC']]
         });
       }
-      return await Product.findAll({ order: [['name', 'ASC']] });
+      return await Product.findAll();
     } catch (error) {
-      throw new ServiceError('Failed to fetch products', 'FETCH_ERROR');
+      throw new Error(`Failed to fetch products: ${error}`);
     }
   }
 
-  async getProduct(id: number): Promise<ProductType> {
+  async getProduct(id: number): Promise<Product> {
     try {
       const product = await Product.findByPk(id);
       if (!product) {
-        throw new ServiceError('Product not found', 'PRODUCT_NOT_FOUND');
+        throw createError.notFound('Product');
       }
       return product;
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof ServiceError) throw error;
-      throw new ServiceError('Failed to fetch product', 'FETCH_PRODUCT_ERROR');
+      throw createError.database(`Failed to fetch product: ${isError(error) ? error.message : 'Unknown error'}`);
     }
   }
 
-  async createProduct(data: ProductCreationAttributes): Promise<ProductType> {
+  async createProduct(data: Omit<ProductCreationAttributes, 'id'>): Promise<Product> {
+    const transaction = await sequelize.transaction();
     try {
-      return await Product.create({
-        name: data.name,
-        description: data.description || '',
-        price: data.price,
-        stockQuantity: data.stockQuantity,
-        reorderLevel: data.reorderLevel
-      });
-    } catch (error) {
-      throw new ServiceError('Failed to create product', 'CREATE_ERROR');
-    }
-  }
-
-  async updateProduct(id: number, productData: Partial<ProductCreationAttributes>): Promise<ProductType> {
-    try {
-      const product = await this.getProduct(id);
-      await product.update(productData);
+      const product = await Product.create(data, { transaction });
+      await transaction.commit();
       return product;
-    } catch (error) {
+    } catch (error: unknown) {
+      await transaction.rollback();
+      if (error instanceof Error && error.name === 'SequelizeUniqueConstraintError') {
+        throw createError.conflict('Product with this name already exists');
+      }
+      throw createError.database(`Failed to create product: ${isError(error) ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async updateProduct(id: number, data: Partial<ProductCreationAttributes>): Promise<Product> {
+    const transaction = await sequelize.transaction();
+    try {
+      const product = await Product.findByPk(id, { transaction });
+      if (!product) {
+        await transaction.rollback();
+        throw createError.notFound('Product');
+      }
+      await product.update(data, { transaction });
+      await transaction.commit();
+      return product;
+    } catch (error: unknown) {
+      await transaction.rollback();
       if (error instanceof ServiceError) throw error;
-      throw new ServiceError('Failed to update product', 'UPDATE_PRODUCT_ERROR');
+      throw createError.database(`Failed to update product: ${isError(error) ? error.message : 'Unknown error'}`);
     }
   }
 
   async deleteProduct(id: number): Promise<void> {
     try {
       const product = await this.getProduct(id);
-      
-      // Check if the product has any associated sales
-      const saleItems = await SaleItem.findOne({
-        where: { product_id: id } as any,
-      });
-
-      if (saleItems) {
-        throw new ServiceError('Cannot delete product with existing sales', 'PRODUCT_HAS_SALES');
-      }
-
       await product.destroy();
     } catch (error) {
-      if (error instanceof ServiceError) throw error;
-      throw new ServiceError('Failed to delete product', 'DELETE_PRODUCT_ERROR');
+      throw new Error(`Failed to delete product: ${error}`);
     }
   }
 
-  async adjustStock(adjustment: StockAdjustment): Promise<ProductType> {
+  async adjustStock(adjustment: StockAdjustment): Promise<Product> {
     const t = await sequelize.transaction();
 
     try {
-      const product = await this.getProduct(adjustment.productId);
+      const product = await Product.findByPk(adjustment.productId, { transaction: t });
+      if (!product) {
+        throw new Error('Product not found');
+      }
+
       const currentStock = product.stockQuantity;
-      
-      let newStock: number;
-      if (adjustment.type === 'increase') {
-        newStock = currentStock + adjustment.quantity;
-      } else {
-        newStock = currentStock - adjustment.quantity;
-        if (newStock < 0) {
-          throw new ServiceError('Cannot reduce stock below zero', 'INVALID_STOCK_ADJUSTMENT');
-        }
+      const adjustmentQuantity = adjustment.type === 'increase' ? adjustment.quantity : -adjustment.quantity;
+      const newStock = currentStock + adjustmentQuantity;
+
+      if (newStock < 0) {
+        throw new Error('Stock adjustment would result in negative stock');
       }
 
       await product.update({ stockQuantity: newStock }, { transaction: t });
@@ -147,23 +157,26 @@ export class DataService {
       return product;
     } catch (error) {
       await t.rollback();
-      if (error instanceof ServiceError) throw error;
-      throw new ServiceError('Failed to adjust stock', 'STOCK_ADJUSTMENT_ERROR');
+      throw new Error(`Failed to adjust stock: ${error}`);
     }
   }
 
-  async getLowStockProducts(): Promise<ProductType[]> {
+  async getLowStockProducts(limit: number = 10): Promise<Product[]> {
     try {
       return await Product.findAll({
         where: {
           stockQuantity: {
-            [Op.lte]: sequelize.col('reorderLevel'),
+            [Op.lte]: sequelize.literal('reorderLevel'),
           },
         },
-        order: [['stockQuantity', 'ASC']],
+        order: [
+          [sequelize.literal('(stockQuantity - reorderLevel)'), 'ASC'],
+        ],
+        limit,
       });
     } catch (error) {
-      throw new ServiceError('Failed to fetch low stock products', 'FETCH_LOW_STOCK_ERROR');
+      console.error('Error getting low stock products:', error);
+      throw error;
     }
   }
 
@@ -182,10 +195,9 @@ export class DataService {
 
       return await Customer.findAll({
         where: whereClause,
-        order: [['name', 'ASC']],
       });
     } catch (error) {
-      throw new ServiceError('Failed to fetch customers', 'FETCH_CUSTOMERS_ERROR');
+      throw new Error(`Failed to fetch customers: ${error}`);
     }
   }
 
@@ -193,339 +205,286 @@ export class DataService {
     try {
       const customer = await Customer.findByPk(id);
       if (!customer) {
-        throw new ServiceError('Customer not found', 'CUSTOMER_NOT_FOUND');
+        throw createError.notFound('Customer');
       }
       return customer;
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof ServiceError) throw error;
-      throw new ServiceError('Failed to fetch customer', 'FETCH_CUSTOMER_ERROR');
+      throw createError.database(`Failed to fetch customer: ${isError(error) ? error.message : 'Unknown error'}`);
     }
   }
 
-  async getCustomerSales(customerId: number): Promise<SaleType[]> {
+  async getCustomerSales(customerId: number): Promise<Sale[]> {
     try {
       return await Sale.findAll({
-        where: { customerId } as any,
+        where: { CustomerId: customerId },
         include: [
           {
             model: SaleItem,
             include: [Product],
           },
         ],
-        order: [['createdAt', 'DESC']],
       });
     } catch (error) {
-      throw new ServiceError('Failed to fetch customer sales', 'FETCH_CUSTOMER_SALES_ERROR');
+      throw new Error(`Failed to fetch customer sales: ${error}`);
     }
   }
 
-  async createCustomer(data: CustomerCreationAttributes): Promise<Customer> {
+  async createCustomer(data: Omit<CustomerCreationAttributes, 'id'>): Promise<Customer> {
+    const transaction = await sequelize.transaction();
     try {
-      return await Customer.create({
-        name: data.name,
-        email: data.email || '',
-        phone: data.phone || '',
-        address: data.address || ''
-      });
+      const customer = await Customer.create(data, { transaction });
+      await transaction.commit();
+      return customer;
+    } catch (error: unknown) {
+      await transaction.rollback();
+      if (error instanceof Error && error.name === 'SequelizeUniqueConstraintError') {
+        throw createError.conflict('Customer with this email already exists');
+      }
+      throw createError.database(`Failed to create customer: ${isError(error) ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async updateCustomer(id: number, data: Partial<CustomerCreationAttributes>): Promise<Customer> {
+    try {
+      const customer = await this.getCustomer(id);
+      await customer.update(data);
+      return customer;
     } catch (error) {
-      throw new ServiceError('Failed to create customer', 'CREATE_ERROR');
+      throw new Error(`Failed to update customer: ${error}`);
     }
   }
 
-  async updateCustomer(id: number, customerData: Partial<CustomerCreationAttributes>) {
+  async deleteCustomer(id: number): Promise<void> {
     try {
-      const customer = await Customer.findByPk(id);
-      if (!customer) throw new Error('Customer not found');
-      return await customer.update(customerData);
-    } catch (error) {
-      console.error('Error updating customer:', error);
-      throw new Error('Failed to update customer');
-    }
-  }
-
-  async deleteCustomer(id: number) {
-    try {
-      const customer = await Customer.findByPk(id);
-      if (!customer) throw new Error('Customer not found');
+      const customer = await this.getCustomer(id);
       await customer.destroy();
     } catch (error) {
-      console.error('Error deleting customer:', error);
-      throw new Error('Failed to delete customer');
+      throw new Error(`Failed to delete customer: ${error}`);
     }
   }
 
   // Sales Operations
-  async createSale(data: {
-    CustomerId: number;
-    items: Array<{
-      ProductId: number;
-      quantity: number;
-      price: number;
-    }>;
-    total: number;
-    paymentMethod: string;
-    paymentStatus: string;
-  }): Promise<SaleType> {
+  async createSale(data: SaleCreationAttributes & { items: Array<Omit<SaleItemCreationAttributes, 'id' | 'SaleId'>> }): Promise<Sale> {
+    const transaction = await sequelize.transaction();
     try {
+      // Validate customer exists
+      const customer = await Customer.findByPk(data.CustomerId, { transaction });
+      if (!customer) {
+        throw createError.notFound('Customer');
+      }
+
+      // Create the sale
       const sale = await Sale.create({
         CustomerId: data.CustomerId,
         total: data.total,
         paymentMethod: data.paymentMethod,
         paymentStatus: data.paymentStatus
-      });
+      }, { transaction });
 
+      // Create sale items and update stock
       for (const item of data.items) {
+        const product = await Product.findByPk(item.ProductId, { transaction });
+        if (!product) {
+          await transaction.rollback();
+          throw createError.notFound(`Product with ID ${item.ProductId}`);
+        }
+
+        if (product.stockQuantity < item.quantity) {
+          throw createError.validation(`Insufficient stock for product ${product.name}`);
+        }
+
         await SaleItem.create({
           SaleId: sale.id,
           ProductId: item.ProductId,
           quantity: item.quantity,
           price: item.price
-        });
+        }, { transaction });
 
-        // Update product stock
-        const product = await Product.findByPk(item.ProductId);
-        if (product) {
-          await product.update({
-            stockQuantity: product.stockQuantity - item.quantity
-          });
-        }
+        await product.update({
+          stockQuantity: product.stockQuantity - item.quantity
+        }, { transaction });
       }
 
+      await transaction.commit();
       return sale;
-    } catch (error) {
-      throw new ServiceError('Failed to create sale', 'CREATE_ERROR');
+    } catch (error: unknown) {
+      await transaction.rollback();
+      if (error instanceof ServiceError) throw error;
+      throw createError.database(`Failed to create sale: ${isError(error) ? error.message : 'Unknown error'}`);
     }
   }
 
-  // Dashboard Statistics
+  async createSaleItem(data: Omit<SaleItemCreationAttributes, 'id'>): Promise<SaleItem> {
+    try {
+      return await SaleItem.create(data);
+    } catch (error) {
+      throw new Error(`Failed to create sale item: ${error}`);
+    }
+  }
+
   async getDashboardStats(): Promise<DashboardStats> {
     try {
-      const [totalSales, totalRevenue, totalCustomers, lowStockProducts] = await Promise.all([
+      const [
+        totalSales,
+        totalRevenue,
+        totalCustomers,
+        lowStockProducts
+      ] = await Promise.all([
         Sale.count(),
         Sale.sum('total'),
         Customer.count(),
         Product.count({
           where: {
             stockQuantity: {
-              [Op.lte]: sequelize.col('reorderLevel'),
-            },
-          },
-        }),
+              [Op.lt]: sequelize.col('reorderLevel')
+            }
+          }
+        })
       ]);
 
       return {
-        totalSales,
+        totalSales: totalSales || 0,
         totalRevenue: totalRevenue || 0,
-        totalCustomers,
-        lowStockProducts,
+        totalCustomers: totalCustomers || 0,
+        lowStockProducts: lowStockProducts || 0
       };
-    } catch (error) {
-      throw new ServiceError('Failed to fetch dashboard stats', 'FETCH_DASHBOARD_ERROR');
+    } catch (error: unknown) {
+      throw createError.database(`Failed to fetch dashboard stats: ${isError(error) ? error.message : 'Unknown error'}`);
     }
   }
 
-  // Reports
-  async getSalesReport(startDate: Date, endDate: Date) {
+  async getSalesAnalytics(startDate: Date, endDate: Date): Promise<SalesAnalytics> {
     try {
-      return await Sale.findAll({
-        where: {
-          createdAt: {
-            [Op.between]: [startDate, endDate]
-          }
-        },
-        include: [
-          {
-            model: Customer,
-            attributes: ['name', 'email', 'phone']
-          },
-          {
-            model: SaleItem,
-            include: [{
-              model: Product,
-              attributes: ['name', 'price']
-            }]
-          }
-        ]
-      });
-    } catch (error) {
-      console.error('Error generating sales report:', error);
-      throw new Error('Failed to generate sales report');
-    }
-  }
-
-  async getInventoryReport() {
-    try {
-      return await Product.findAll({
-        attributes: [
-          'id',
-          'name',
-          'description',
-          'price',
-          'stockQuantity',
-          'reorderLevel'
-        ],
-        order: [
-          ['stockQuantity', 'ASC']
-        ]
-      });
-    } catch (error) {
-      console.error('Error generating inventory report:', error);
-      throw new Error('Failed to generate inventory report');
-    }
-  }
-
-  async getCustomerReport() {
-    try {
-      return await Customer.findAll({
-        include: [{
-          model: Sale,
-          attributes: ['id', 'total', 'createdAt']
-        }],
-        order: [
-          [Sale, 'createdAt', 'DESC']
-        ]
-      });
-    } catch (error) {
-      console.error('Error generating customer report:', error);
-      throw new Error('Failed to generate customer report');
-    }
-  }
-
-  async getSalesAnalytics(timeRange: 'week' | 'month' | 'year'): Promise<SalesAnalytics> {
-    try {
-      const endDate = new Date();
-      let startDate = new Date();
-      
-      switch (timeRange) {
-        case 'week':
-          startDate.setDate(startDate.getDate() - 7);
-          break;
-        case 'month':
-          startDate.setMonth(startDate.getMonth() - 1);
-          break;
-        case 'year':
-          startDate.setFullYear(startDate.getFullYear() - 1);
-          break;
-      }
-
+      // Get sales within date range
       const sales = await Sale.findAll({
         where: {
           createdAt: {
-            [Op.between]: [startDate, endDate]
-          }
+            [Op.between]: [startDate, endDate],
+          },
         },
-        include: [{ model: SaleItem, include: [Product] }],
-        order: [['createdAt', 'ASC']]
       });
 
-      // Calculate previous period for comparison
-      const previousStartDate = new Date(startDate);
-      const previousEndDate = new Date(endDate);
-      switch (timeRange) {
-        case 'week':
-          previousStartDate.setDate(previousStartDate.getDate() - 7);
-          previousEndDate.setDate(previousEndDate.getDate() - 7);
-          break;
-        case 'month':
-          previousStartDate.setMonth(previousStartDate.getMonth() - 1);
-          previousEndDate.setMonth(previousEndDate.getMonth() - 1);
-          break;
-        case 'year':
-          previousStartDate.setFullYear(previousStartDate.getFullYear() - 1);
-          previousEndDate.setFullYear(previousEndDate.getFullYear() - 1);
-          break;
-      }
+      // Calculate total metrics
+      const totalSales = sales.length;
+      const totalRevenue = sales.reduce((sum, sale) => sum + Number(sale.total), 0);
+      const averageOrderValue = totalRevenue / totalSales || 0;
 
+      // Calculate daily trend
+      const trend = await Sale.findAll({
+        attributes: [
+          [sequelize.fn('date', sequelize.col('createdAt')), 'date'],
+          [sequelize.fn('count', sequelize.col('id')), 'sales'],
+          [sequelize.fn('sum', sequelize.col('total')), 'revenue'],
+        ],
+        where: {
+          createdAt: {
+            [Op.between]: [startDate, endDate],
+          },
+        },
+        group: [sequelize.fn('date', sequelize.col('createdAt'))],
+        order: [[sequelize.fn('date', sequelize.col('createdAt')), 'ASC']],
+        raw: true,
+      });
+
+      // Calculate previous period metrics for comparison
+      const previousStartDate = new Date(startDate);
+      previousStartDate.setDate(previousStartDate.getDate() - (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+      
       const previousSales = await Sale.findAll({
         where: {
           createdAt: {
-            [Op.between]: [previousStartDate, previousEndDate]
-          }
-        }
+            [Op.between]: [previousStartDate, startDate],
+          },
+        },
       });
 
-      // Calculate trends
-      const trend = sales.reduce((acc: SalesAnalytics['trend'], sale) => {
-        const date = sale.createdAt.toISOString().split('T')[0];
-        const existingDay = acc.find(day => day.date === date);
-        
-        if (existingDay) {
-          existingDay.sales += 1;
-          existingDay.revenue += Number(sale.total);
-        } else {
-          acc.push({
-            date,
-            sales: 1,
-            revenue: Number(sale.total)
-          });
-        }
-        
-        return acc;
-      }, []);
+      const previousTotalSales = previousSales.length;
+      const previousTotalRevenue = previousSales.reduce((sum, sale) => sum + Number(sale.total), 0);
+      const previousAverageOrderValue = previousTotalRevenue / previousTotalSales || 0;
 
-      // Calculate summary statistics
-      const currentPeriodTotal = sales.reduce((sum, sale) => sum + Number(sale.total), 0);
-      const previousPeriodTotal = previousSales.reduce((sum, sale) => sum + Number(sale.total), 0);
-      const revenueChange = previousPeriodTotal ? 
-        ((currentPeriodTotal - previousPeriodTotal) / previousPeriodTotal) * 100 : 
-        100;
+      // Calculate percentage changes
+      const salesChange = ((totalSales - previousTotalSales) / previousTotalSales) * 100 || 0;
+      const revenueChange = ((totalRevenue - previousTotalRevenue) / previousTotalRevenue) * 100 || 0;
+      const aovChange = ((averageOrderValue - previousAverageOrderValue) / previousAverageOrderValue) * 100 || 0;
 
+      // Prepare summary metrics
       const summary = [
         {
           label: 'Total Sales',
-          value: sales.length,
-          change: previousSales.length ? 
-            ((sales.length - previousSales.length) / previousSales.length) * 100 : 
-            100
+          value: totalSales,
+          change: salesChange,
         },
         {
           label: 'Total Revenue',
-          value: `$${currentPeriodTotal.toFixed(2)}`,
-          change: revenueChange
+          value: totalRevenue,
+          change: revenueChange,
         },
         {
           label: 'Average Order Value',
-          value: `$${(currentPeriodTotal / (sales.length || 1)).toFixed(2)}`,
-          change: revenueChange
+          value: averageOrderValue,
+          change: aovChange,
         },
-        {
-          label: 'Items Sold',
-          value: sales.reduce((sum, sale) => 
-            sum + sale.SaleItems.reduce((itemSum, item) => itemSum + item.quantity, 0), 0),
-          change: 0 // Calculate if needed
-        }
       ];
 
-      return { trend, summary };
+      return {
+        totalSales,
+        totalRevenue,
+        averageOrderValue,
+        trend: trend.map((t: any) => ({
+          date: t.date,
+          sales: Number(t.sales),
+          revenue: Number(t.revenue),
+        })),
+        summary,
+      };
     } catch (error) {
-      throw new ServiceError('Failed to fetch sales analytics', 'ANALYTICS_ERROR');
+      console.error('Error getting sales analytics:', error);
+      throw error;
     }
   }
 
-  async getTopProducts(): Promise<TopProduct[]> {
+  async getTopProducts(startDate: Date, endDate: Date, limit: number = 5): Promise<TopProduct[]> {
     try {
-      const result = await SaleItem.findAll({
+      const topProducts = await SaleItem.findAll({
         attributes: [
           'ProductId',
-          [sequelize.fn('SUM', sequelize.col('quantity')), 'total_quantity']
+          [sequelize.fn('sum', sequelize.col('quantity')), 'totalQuantity'],
+          [sequelize.fn('sum', sequelize.literal('quantity * price')), 'totalRevenue'],
         ],
-        include: [{
-          model: Product,
-          attributes: ['name']
-        }],
-        group: ['ProductId', 'Product.id', 'Product.name'],
-        order: [[sequelize.fn('SUM', sequelize.col('quantity')), 'DESC']],
-        limit: 5
+        include: [
+          {
+            model: Product,
+            attributes: ['name'],
+          },
+          {
+            model: Sale,
+            attributes: [],
+            where: {
+              createdAt: {
+                [Op.between]: [startDate, endDate],
+              },
+            },
+          },
+        ],
+        group: ['ProductId', 'Product.id'],
+        order: [[sequelize.literal('totalRevenue'), 'DESC']],
+        limit,
+        raw: true,
+        nest: true,
       });
 
-      return result.map(item => ({
-        name: item.Product.name,
-        value: Number(item.getDataValue('total_quantity'))
+      return topProducts.map((product: any) => ({
+        id: product.ProductId,
+        name: product.Product.name,
+        totalQuantity: Number(product.totalQuantity),
+        totalRevenue: Number(product.totalRevenue),
       }));
     } catch (error) {
-      throw new ServiceError('Failed to fetch top products', 'ANALYTICS_ERROR');
+      console.error('Error getting top products:', error);
+      throw error;
     }
   }
 }
 
-export const dataService = new DataService(); 
+export default DataService.getInstance(); 

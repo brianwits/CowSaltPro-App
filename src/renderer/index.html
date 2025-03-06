@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <meta name="theme-color" content="#2196f3" />
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' 'unsafe-eval';" />
+    <meta
+      name="description"
+      content="CowSalt Pro - ERP & POS System for Salt Distribution Management"
+    />
+    <title>CowSalt Pro</title>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap"
+    />
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      
+      html, body {
+        height: 100%;
+        width: 100%;
+        overflow: hidden;
+      }
+      
+      body {
+        font-family: 'Roboto', sans-serif;
+        background-color: #fafafa;
+        color: #333;
+      }
+      
+      #root {
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+      
+      /* Initial loading indicator shown before JS loads */
+      #initial-loader {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background-color: #fafafa;
+        z-index: 9999;
+      }
+      
+      @keyframes spinner {
+        to {transform: rotate(360deg);}
+      }
+      
+      .loading-spinner {
+        width: 50px;
+        height: 50px;
+        border: 4px solid rgba(0, 0, 0, 0.1);
+        border-left-color: #2196f3;
+        border-radius: 50%;
+        animation: spinner 1s linear infinite;
+      }
+      
+      .loading-text {
+        margin-top: 20px;
+        font-size: 18px;
+        color: #555;
+      }
+      
+      /* Improve loading perception */
+      .fade-in {
+        animation: fadeIn 0.5s ease-in;
+      }
+      
+      @keyframes fadeIn {
+        0% { opacity: 0; }
+        100% { opacity: 1; }
+      }
+    </style>
+  </head>
+  <body>
+    <noscript>
+      <div style="padding: 20px; text-align: center; color: red; background-color: #ffebee; border: 1px solid #ef9a9a;">
+        <h2>JavaScript Required</h2>
+        <p>You need to enable JavaScript to run CowSalt Pro.</p>
+      </div>
+    </noscript>
+    
+    <!-- Initial loader shown before JS initializes -->
+    <div id="initial-loader">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">Loading CowSalt Pro...</div>
+    </div>
+    
+    <!-- Root element for React app -->
+    <div id="root" class="fade-in"></div>
+    
+    <script>
+      // Remove the initial loader once the app is rendered
+      document.addEventListener('DOMContentLoaded', function() {
+        // The app.js will handle removing this once React is initialized
+        // But we'll add a fallback timeout in case something goes wrong
+        setTimeout(function() {
+          const initialLoader = document.getElementById('initial-loader');
+          if (initialLoader && initialLoader.parentNode) {
+            initialLoader.style.opacity = '0';
+            initialLoader.style.transition = 'opacity 0.5s ease';
+            setTimeout(function() {
+              if (initialLoader.parentNode) {
+                initialLoader.parentNode.removeChild(initialLoader);
+              }
+            }, 500);
+          }
+        }, 3000); // 3 second fallback
+      });
+      
+      // Handle global errors
+      window.addEventListener('error', function(event) {
+        console.error('Global error:', event.error);
+        
+        // Only show error UI if the app hasn't loaded yet
+        if (document.getElementById('initial-loader')) {
+          const errorMessage = document.createElement('div');
+          errorMessage.style.color = '#d32f2f';
+          errorMessage.style.marginTop = '20px';
+          errorMessage.style.padding = '10px';
+          errorMessage.style.backgroundColor = '#ffebee';
+          errorMessage.style.borderRadius = '4px';
+          errorMessage.style.maxWidth = '80%';
+          errorMessage.style.textAlign = 'center';
+          
+          errorMessage.innerHTML = `
+            <strong>Error Loading Application</strong><br>
+            ${event.message || 'Unknown error'}<br>
+            <button onclick="window.location.reload()" 
+              style="margin-top:10px; padding:5px 10px; background:#2196f3; color:white; border:none; border-radius:4px; cursor:pointer">
+              Reload
+            </button>
+          `;
+          
+          document.getElementById('initial-loader').appendChild(errorMessage);
+        }
+      });
+    </script>
+  </body>
+</html> 

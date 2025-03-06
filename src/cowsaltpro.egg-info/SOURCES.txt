@@ -1,0 +1,8 @@
+LICENSE
+README.md
+pyproject.toml
+src/cowsaltpro.egg-info/PKG-INFO
+src/cowsaltpro.egg-info/SOURCES.txt
+src/cowsaltpro.egg-info/dependency_links.txt
+src/cowsaltpro.egg-info/requires.txt
+src/cowsaltpro.egg-info/top_level.txt

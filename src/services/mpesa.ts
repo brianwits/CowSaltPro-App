@@ -9,6 +9,11 @@ interface MPESAConfig {
   environment: 'sandbox' | 'production';
 }
 
+interface MPESAResponse {
+  access_token: string;
+  expires_in: number;
+}
+
 class MPESAService {
   private config: MPESAConfig;
   private baseURL: string;
@@ -30,11 +35,15 @@ class MPESAService {
     const auth = Buffer.from(`${this.config.consumerKey}:${this.config.consumerSecret}`).toString('base64');
     
     try {
-      const response = await axios.get(`${this.baseURL}/oauth/v1/generate?grant_type=client_credentials`, {
+      const response = await axios.get<MPESAResponse>(`${this.baseURL}/oauth/v1/generate?grant_type=client_credentials`, {
         headers: {
           Authorization: `Basic ${auth}`,
         },
       });
+
+      if (!response.data.access_token) {
+        throw new Error('Invalid response from MPESA API');
+      }
 
       this.accessToken = response.data.access_token;
       this.tokenExpiry = new Date(Date.now() + (response.data.expires_in * 1000));

@@ -34,8 +34,11 @@ import {
   AddCircle as IncreaseIcon,
   RemoveCircle as DecreaseIcon,
 } from '@mui/icons-material';
-import { dataService } from '../../services/data';
-import type { Product } from '../../database/models';
+import { DataService } from '../../services/data';
+import { ProductAttributes } from '../../database/models';
+import { ProductCategory } from '../../database/models/types';
+
+const dataService = DataService.getInstance();
 
 interface ProductFormData {
   name: string;
@@ -43,6 +46,7 @@ interface ProductFormData {
   price: number;
   stockQuantity: number;
   reorderLevel: number;
+  category: ProductCategory;
 }
 
 interface StockAdjustmentData {
@@ -57,6 +61,7 @@ const initialFormData: ProductFormData = {
   price: 0,
   stockQuantity: 0,
   reorderLevel: 10,
+  category: ProductCategory.REGULAR,
 };
 
 const initialAdjustmentData: StockAdjustmentData = {
@@ -67,7 +72,7 @@ const initialAdjustmentData: StockAdjustmentData = {
 
 const Inventory: React.FC = () => {
   // State management
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<ProductAttributes[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -77,12 +82,13 @@ const Inventory: React.FC = () => {
   const [openAdjustDialog, setOpenAdjustDialog] = useState(false);
   const [formData, setFormData] = useState<ProductFormData>(initialFormData);
   const [adjustmentData, setAdjustmentData] = useState<StockAdjustmentData>(initialAdjustmentData);
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<ProductAttributes | null>(null);
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
     open: false,
     message: '',
     severity: 'success',
   });
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Fetch products
   const fetchProducts = async () => {
@@ -104,7 +110,7 @@ const Inventory: React.FC = () => {
   }, [searchTerm]);
 
   // Handle product dialog
-  const handleOpenDialog = (product?: Product) => {
+  const handleOpenDialog = (product?: ProductAttributes) => {
     if (product) {
       setSelectedProduct(product);
       setFormData({
@@ -113,6 +119,7 @@ const Inventory: React.FC = () => {
         price: product.price,
         stockQuantity: product.stockQuantity,
         reorderLevel: product.reorderLevel,
+        category: product.category as unknown as ProductCategory,
       });
     } else {
       setSelectedProduct(null);
@@ -128,7 +135,7 @@ const Inventory: React.FC = () => {
   };
 
   // Handle stock adjustment dialog
-  const handleOpenAdjustDialog = (product: Product, type: 'increase' | 'decrease') => {
+  const handleOpenAdjustDialog = (product: ProductAttributes, type: 'increase' | 'decrease') => {
     setSelectedProduct(product);
     setAdjustmentData({ ...initialAdjustmentData, type });
     setOpenAdjustDialog(true);
@@ -141,18 +148,25 @@ const Inventory: React.FC = () => {
   };
 
   // Handle form submission
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setIsSubmitting(true);
     try {
       if (selectedProduct) {
-        await dataService.updateProduct(selectedProduct.id, formData);
+        await dataService.updateProduct(selectedProduct.id, {
+          ...formData,
+          category: formData.category as any
+        });
         setSnackbar({
           open: true,
           message: 'Product updated successfully',
           severity: 'success',
         });
       } else {
-        await dataService.createProduct(formData);
+        await dataService.createProduct({
+          ...formData,
+          category: formData.category as any
+        });
         setSnackbar({
           open: true,
           message: 'Product created successfully',
@@ -162,12 +176,13 @@ const Inventory: React.FC = () => {
       handleCloseDialog();
       fetchProducts();
     } catch (err) {
-      console.error('Error saving product:', err);
       setSnackbar({
         open: true,
-        message: 'Failed to save product',
+        message: `Error: ${err instanceof Error ? err.message : 'Unknown error'}`,
         severity: 'error',
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -201,7 +216,7 @@ const Inventory: React.FC = () => {
   };
 
   // Handle delete
-  const handleDelete = async (product: Product) => {
+  const handleDelete = async (product: ProductAttributes) => {
     try {
       await dataService.deleteProduct(product.id);
       setSnackbar({

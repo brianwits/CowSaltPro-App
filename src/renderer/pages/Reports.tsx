@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import {
   Box,
+  Container,
+  Grid,
   Paper,
   Typography,
-  Grid,
-  Card,
-  CardContent,
-  FormControl,
-  InputLabel,
   Select,
   MenuItem,
+  FormControl,
+  InputLabel,
   CircularProgress,
+  Alert,
 } from '@mui/material';
 import {
   LineChart,
@@ -20,164 +20,198 @@ import {
   CartesianGrid,
   Tooltip,
   Legend,
-  PieChart,
-  Pie,
-  Cell,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
 } from 'recharts';
-import { dataService } from '../../services/data';
-import { useNotification } from '../context/NotificationContext';
-import useApiState from '../hooks/useApiState';
-import type { SalesAnalytics, TopProduct } from '../../services/data';
+import { DataService, SalesAnalytics, TopProduct } from '../../services/data';
 
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
+type TimeRange = '7d' | '30d' | '90d' | '1y';
+
+const dataService = DataService.getInstance();
 
 const Reports: React.FC = () => {
-  const { showNotification } = useNotification();
-  const [timeRange, setTimeRange] = useState<'week' | 'month' | 'year'>('week');
-  
-  const {
-    data: salesData,
-    loading: salesLoading,
-    error: salesError,
-    startLoading: startSalesLoading,
-    setData: setSalesData,
-    setError: setSalesError,
-  } = useApiState<SalesAnalytics | null>(null);
+  const [timeRange, setTimeRange] = useState<TimeRange>('30d');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [salesData, setSalesData] = useState<SalesAnalytics | null>(null);
+  const [topProducts, setTopProducts] = useState<TopProduct[]>([]);
 
-  const {
-    data: productData,
-    loading: productLoading,
-    error: productError,
-    startLoading: startProductLoading,
-    setData: setProductData,
-    setError: setProductError,
-  } = useApiState<TopProduct[] | null>(null);
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Calculate date range
+      const endDate = new Date();
+      const startDate = new Date();
+      switch (timeRange) {
+        case '7d':
+          startDate.setDate(endDate.getDate() - 7);
+          break;
+        case '30d':
+          startDate.setDate(endDate.getDate() - 30);
+          break;
+        case '90d':
+          startDate.setDate(endDate.getDate() - 90);
+          break;
+        case '1y':
+          startDate.setFullYear(endDate.getFullYear() - 1);
+          break;
+      }
+
+      // Fetch data
+      const [analytics, products] = await Promise.all([
+        dataService.getSalesAnalytics(startDate, endDate),
+        dataService.getTopProducts(startDate, endDate),
+      ]);
+
+      setSalesData(analytics);
+      setTopProducts(products);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred while loading data');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     loadData();
   }, [timeRange]);
 
-  const loadData = async () => {
-    try {
-      startSalesLoading();
-      startProductLoading();
-      
-      const sales = await dataService.getSalesAnalytics(timeRange);
-      const products = await dataService.getTopProducts();
-      
-      setSalesData(sales);
-      setProductData(products);
-    } catch (error) {
-      setSalesError('Failed to load analytics data');
-      setProductError('Failed to load product data');
-      showNotification('Failed to load reports data', 'error');
-    }
-  };
-
-  if (salesLoading || productLoading) {
+  if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
         <CircularProgress />
       </Box>
     );
   }
 
+  if (error) {
+    return (
+      <Container>
+        <Alert severity="error" sx={{ mt: 2 }}>
+          {error}
+        </Alert>
+      </Container>
+    );
+  }
+
+  if (!salesData) {
+    return (
+      <Container>
+        <Alert severity="info" sx={{ mt: 2 }}>
+          No data available
+        </Alert>
+      </Container>
+    );
+  }
+
   return (
-    <Box sx={{ p: 3 }}>
+    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+        <Typography variant="h4" component="h1" gutterBottom>
+          Sales Reports
+        </Typography>
+        <FormControl sx={{ minWidth: 120 }}>
+          <InputLabel>Time Range</InputLabel>
+          <Select
+            value={timeRange}
+            label="Time Range"
+            onChange={(e) => setTimeRange(e.target.value as TimeRange)}
+          >
+            <MenuItem value="7d">Last 7 Days</MenuItem>
+            <MenuItem value="30d">Last 30 Days</MenuItem>
+            <MenuItem value="90d">Last 90 Days</MenuItem>
+            <MenuItem value="1y">Last Year</MenuItem>
+          </Select>
+        </FormControl>
+      </Box>
+
       <Grid container spacing={3}>
-        <Grid item xs={12}>
-          <Paper sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Typography variant="h5">Sales Analytics</Typography>
-            <FormControl sx={{ minWidth: 200 }}>
-              <InputLabel>Time Range</InputLabel>
-              <Select
-                value={timeRange}
-                label="Time Range"
-                onChange={(e) => setTimeRange(e.target.value as 'week' | 'month' | 'year')}
+        {salesData.summary.map((item, index) => (
+          <Grid item xs={12} md={4} key={index}>
+            <Paper
+              sx={{
+                p: 2,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+              }}
+            >
+              <Typography variant="h6" color="text.secondary">
+                {item.label}
+              </Typography>
+              <Typography variant="h4" component="p">
+                {item.label.includes('Revenue')
+                  ? `$${item.value.toLocaleString()}`
+                  : item.value.toLocaleString()}
+              </Typography>
+              <Typography
+                variant="body2"
+                color={item.change >= 0 ? 'success.main' : 'error.main'}
               >
-                <MenuItem value="week">Last Week</MenuItem>
-                <MenuItem value="month">Last Month</MenuItem>
-                <MenuItem value="year">Last Year</MenuItem>
-              </Select>
-            </FormControl>
+                {item.change >= 0 ? '+' : ''}
+                {item.change.toFixed(1)}% vs previous period
+              </Typography>
+            </Paper>
+          </Grid>
+        ))}
+
+        <Grid item xs={12}>
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="h6" gutterBottom>
+              Sales Trend
+            </Typography>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={salesData.trend}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" />
+                <YAxis yAxisId="left" />
+                <YAxis yAxisId="right" orientation="right" />
+                <Tooltip />
+                <Legend />
+                <Line
+                  yAxisId="left"
+                  type="monotone"
+                  dataKey="sales"
+                  stroke="#8884d8"
+                  name="Sales"
+                />
+                <Line
+                  yAxisId="right"
+                  type="monotone"
+                  dataKey="revenue"
+                  stroke="#82ca9d"
+                  name="Revenue"
+                />
+              </LineChart>
+            </ResponsiveContainer>
           </Paper>
         </Grid>
 
-        {/* Sales Trend Chart */}
-        <Grid item xs={12} md={8}>
+        <Grid item xs={12}>
           <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>Sales Trend</Typography>
-            {salesData?.trend && (
-              <LineChart
-                width={800}
-                height={400}
-                data={salesData.trend}
-                margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-              >
+            <Typography variant="h6" gutterBottom>
+              Top Products
+            </Typography>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={topProducts}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" />
+                <XAxis dataKey="name" />
                 <YAxis />
                 <Tooltip />
                 <Legend />
-                <Line type="monotone" dataKey="sales" stroke="#8884d8" />
-                <Line type="monotone" dataKey="revenue" stroke="#82ca9d" />
-              </LineChart>
-            )}
+                <Bar dataKey="totalQuantity" fill="#8884d8" name="Quantity Sold" />
+                <Bar dataKey="totalRevenue" fill="#82ca9d" name="Revenue" />
+              </BarChart>
+            </ResponsiveContainer>
           </Paper>
-        </Grid>
-
-        {/* Top Products Chart */}
-        <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>Top Products</Typography>
-            {productData && (
-              <PieChart width={400} height={400}>
-                <Pie
-                  data={productData}
-                  cx={200}
-                  cy={200}
-                  labelLine={false}
-                  outerRadius={150}
-                  fill="#8884d8"
-                  dataKey="value"
-                  label={({ name, value }) => `${name}: ${value}`}
-                >
-                  {productData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-                <Legend />
-              </PieChart>
-            )}
-          </Paper>
-        </Grid>
-
-        {/* Summary Cards */}
-        <Grid item xs={12}>
-          <Grid container spacing={2}>
-            {salesData?.summary.map((item, index) => (
-              <Grid item xs={12} sm={6} md={3} key={index}>
-                <Card>
-                  <CardContent>
-                    <Typography color="textSecondary" gutterBottom>
-                      {item.label}
-                    </Typography>
-                    <Typography variant="h5" component="div">
-                      {item.value}
-                    </Typography>
-                    <Typography color="textSecondary">
-                      {item.change.toFixed(1)}% from last period
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-            ))}
-          </Grid>
         </Grid>
       </Grid>
-    </Box>
+    </Container>
   );
 };
 
+export { Reports };
 export default Reports; 

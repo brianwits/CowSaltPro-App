@@ -1,9 +1,9 @@
-import { sequelize, Product, Customer } from './models';
+import { sequelize, Product, Customer, ProductCategory } from './models';
 
 export async function initializeDatabase() {
   try {
-    // Sync database
-    await sequelize.sync({ force: true }); // Be careful with force: true in production!
+    // Sync all models with the database
+    await sequelize.sync({ force: true });
 
     // Create default customer for walk-in sales
     await Customer.create({
@@ -13,42 +13,46 @@ export async function initializeDatabase() {
       address: 'N/A'
     });
 
-    // Create some sample products
+    // Create initial products
     await Product.create({
-      name: 'Regular Salt - 1kg',
-      description: 'Standard table salt',
-      price: 50,
+      name: 'Fine Table Salt',
+      description: 'High-quality fine table salt for everyday use',
+      price: 100.00,
       stockQuantity: 100,
-      reorderLevel: 20
+      reorderLevel: 20,
+      category: 'Table Salt' as ProductCategory
     });
 
     await Product.create({
-      name: 'Premium Salt - 1kg',
-      description: 'Premium quality salt',
-      price: 75,
+      name: 'Premium Rock Salt',
+      description: 'Premium quality rock salt with natural minerals',
+      price: 150.00,
       stockQuantity: 50,
-      reorderLevel: 15
+      reorderLevel: 15,
+      category: 'Premium Salt' as ProductCategory
     });
 
     await Product.create({
-      name: 'Mineral Salt - 1kg',
-      description: 'Enriched with minerals',
-      price: 100,
+      name: 'Mineral Salt Mix',
+      description: 'Special mineral salt mix for livestock',
+      price: 200.00,
       stockQuantity: 30,
-      reorderLevel: 10
+      reorderLevel: 10,
+      category: 'Mineral Salt' as ProductCategory
     });
 
     await Product.create({
-      name: 'Bulk Salt - 50kg',
-      description: 'Bulk packaging for commercial use',
-      price: 2000,
+      name: 'Bulk Industrial Salt',
+      description: 'Industrial grade salt in bulk quantities',
+      price: 80.00,
       stockQuantity: 10,
-      reorderLevel: 3
+      reorderLevel: 3,
+      category: 'Bulk Salt' as ProductCategory
     });
 
     console.log('Database initialized successfully');
   } catch (error) {
-    console.error('Failed to initialize database:', error);
+    console.error('Error initializing database:', error);
     throw error;
   }
 } 

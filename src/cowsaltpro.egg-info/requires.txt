@@ -1,0 +1,7 @@
+pandas
+plotly
+pyqt6
+matplotlib
+sqlalchemy
+bcrypt
+uuid

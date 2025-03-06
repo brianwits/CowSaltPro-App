@@ -1,0 +1,13 @@
+Metadata-Version: 2.2
+Name: cowsaltpro
+Version: 1.0.0
+Summary: ERP & POS System for Cow Salt Production
+Requires-Python: >=3.8
+License-File: LICENSE
+Requires-Dist: pandas
+Requires-Dist: plotly
+Requires-Dist: pyqt6
+Requires-Dist: matplotlib
+Requires-Dist: sqlalchemy
+Requires-Dist: bcrypt
+Requires-Dist: uuid

@@ -31,8 +31,8 @@ import {
   Delete as DeleteIcon,
   Visibility as ViewIcon,
 } from '@mui/icons-material';
-import { dataService } from '../../services/data';
-import type { Customer } from '../../database/models';
+import { DataService } from '../../services/data';
+import type { CustomerAttributes } from '../../database/models';
 import CustomerDetails from '../components/CustomerDetails';
 
 interface CustomerFormData {
@@ -49,9 +49,11 @@ const initialFormData: CustomerFormData = {
   address: '',
 };
 
+const dataService = DataService.getInstance();
+
 const Customers: React.FC = () => {
   // State management
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [customers, setCustomers] = useState<CustomerAttributes[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -59,7 +61,7 @@ const Customers: React.FC = () => {
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [openDialog, setOpenDialog] = useState(false);
   const [formData, setFormData] = useState<CustomerFormData>(initialFormData);
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerAttributes | null>(null);
   const [viewCustomerId, setViewCustomerId] = useState<number | null>(null);
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
     open: false,
@@ -87,7 +89,7 @@ const Customers: React.FC = () => {
   }, [searchTerm]);
 
   // Handle dialog
-  const handleOpenDialog = (customer?: Customer) => {
+  const handleOpenDialog = (customer?: CustomerAttributes) => {
     if (customer) {
       setSelectedCustomer(customer);
       setFormData({
@@ -141,7 +143,7 @@ const Customers: React.FC = () => {
   };
 
   // Handle delete
-  const handleDelete = async (customer: Customer) => {
+  const handleDelete = async (customer: CustomerAttributes) => {
     try {
       await dataService.deleteCustomer(customer.id);
       setSnackbar({

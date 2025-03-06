@@ -1,76 +1,61 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
+  Container,
   Grid,
   Paper,
   Typography,
-  TextField,
   Button,
   List,
   ListItem,
   ListItemText,
   ListItemSecondaryAction,
   IconButton,
-  Divider,
-  Box,
-  CircularProgress,
-  Alert,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
 } from '@mui/material';
-import {
-  Delete as DeleteIcon,
-  Add as AddIcon,
-  Remove as RemoveIcon,
-  Payment as PaymentIcon,
-} from '@mui/icons-material';
-import { dataService } from '../../services/data';
+import AddIcon from '@mui/icons-material/Add';
+import RemoveIcon from '@mui/icons-material/Remove';
+import DeleteIcon from '@mui/icons-material/Delete';
 import { useNotification } from '../context/NotificationContext';
 import useApiState from '../hooks/useApiState';
-import type { ProductAttributes } from '../../database/models/types';
+import { ProductAttributes, CustomerAttributes, PaymentMethod, PaymentStatus } from '../../models';
+import { DataService } from '../../services/data';
 
-interface CartItem extends ProductAttributes {
+const dataService = DataService.getInstance();
+
+interface CartItemType extends ProductAttributes {
   quantity: number;
 }
 
-const POS: React.FC = () => {
+interface POSProps {}
+
+const POS: React.FC<POSProps> = () => {
+  const [cart, setCart] = useState<CartItemType[]>([]);
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerAttributes | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(PaymentMethod.CASH);
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>(PaymentStatus.PAID);
+  const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
   const { showNotification } = useNotification();
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
-
-  const {
-    data: products,
-    loading,
-    error,
-    startLoading,
-    setData: setProducts,
-    setError,
-  } = useApiState<ProductAttributes[]>([]);
-
-  useEffect(() => {
-    loadProducts();
-  }, []);
-
-  const loadProducts = async () => {
-    try {
-      startLoading();
-      const data = await dataService.getProducts();
-      setProducts(data);
-    } catch (error) {
-      setError('Failed to load products');
-      showNotification('Error loading products', 'error');
-    }
-  };
+  const { loading: isProcessing, setIsLoading: setIsProcessing } = useApiState(() => Promise.resolve(null));
 
   const addToCart = (product: ProductAttributes) => {
     if (product.stockQuantity <= 0) {
-      showNotification('Product out of stock', 'error');
+      showNotification('warning', 'Product is out of stock');
       return;
     }
 
     setCart((prevCart) => {
       const existingItem = prevCart.find((item) => item.id === product.id);
+
       if (existingItem) {
         if (existingItem.quantity >= product.stockQuantity) {
-          showNotification('Cannot exceed available stock', 'warning');
+          showNotification('warning', 'Cannot exceed available stock');
           return prevCart;
         }
         return prevCart.map((item) =>
@@ -79,12 +64,9 @@ const POS: React.FC = () => {
             : item
         );
       }
+
       return [...prevCart, { ...product, quantity: 1 }];
     });
-  };
-
-  const removeFromCart = (productId: number) => {
-    setCart((prevCart) => prevCart.filter((item) => item.id !== productId));
   };
 
   const updateQuantity = (productId: number, delta: number) => {
@@ -93,7 +75,7 @@ const POS: React.FC = () => {
         if (item.id !== productId) return item;
         const newQuantity = Math.max(1, item.quantity + delta);
         if (newQuantity > item.stockQuantity) {
-          showNotification('Cannot exceed available stock', 'warning');
+          showNotification('warning', 'Cannot exceed available stock');
           return item;
         }
         return { ...item, quantity: newQuantity };
@@ -101,161 +83,162 @@ const POS: React.FC = () => {
     );
   };
 
+  const removeFromCart = (productId: number) => {
+    setCart((prevCart) => prevCart.filter((item) => item.id !== productId));
+  };
+
   const calculateTotal = () => {
-    return cart.reduce((total, item) => total + item.price * item.quantity, 0);
+    return cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   };
 
   const handlePayment = async () => {
+    if (!selectedCustomer) {
+      showNotification('error', 'Please select a customer');
+      return;
+    }
+
+    if (cart.length === 0) {
+      showNotification('error', 'Cart is empty');
+      return;
+    }
+
     try {
       setIsProcessing(true);
-      
+
       // Create the sale
-      await dataService.createSale({
-        CustomerId: 1, // TODO: Implement customer selection
+      const saleData = {
+        CustomerId: selectedCustomer.id,
         items: cart.map(item => ({
           ProductId: item.id,
           quantity: item.quantity,
           price: item.price
         })),
         total: calculateTotal(),
-        paymentMethod: 'cash', // TODO: Implement payment method selection
-        paymentStatus: 'paid'
-      });
+        paymentMethod,
+        paymentStatus
+      };
 
-      // Clear cart and show success message
+      await dataService.createSale(saleData);
+
+      // Clear the cart and reset state
       setCart([]);
-      showNotification('Payment processed successfully', 'success');
-      
-      // Reload products to get updated stock quantities
-      await loadProducts();
+      setSelectedCustomer(null);
+      setPaymentMethod(PaymentMethod.CASH);
+      setPaymentStatus(PaymentStatus.PAID);
+      showNotification('success', 'Sale completed successfully');
     } catch (error) {
-      showNotification('Failed to process payment', 'error');
+      console.error('Payment processing error:', error);
+      showNotification('error', 'Failed to process payment');
     } finally {
       setIsProcessing(false);
     }
   };
 
-  if (loading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-        <CircularProgress />
-      </Box>
-    );
-  }
-
-  if (error) {
-    return (
-      <Box sx={{ p: 3 }}>
-        <Alert severity="error">{error}</Alert>
-      </Box>
-    );
-  }
-
   return (
-    <Box sx={{ flexGrow: 1, height: '100%', p: 3 }}>
+    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       <Grid container spacing={3}>
         <Grid item xs={12} md={8}>
-          <Paper sx={{ p: 2, height: '100%' }}>
-            <TextField
-              fullWidth
-              variant="outlined"
-              placeholder="Search products..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              sx={{ mb: 2 }}
-            />
-            <Grid container spacing={2} sx={{ height: 'calc(100vh - 250px)', overflow: 'auto' }}>
-              {(products || [])
-                .filter((product) =>
-                  product.name.toLowerCase().includes(searchTerm.toLowerCase())
-                )
-                .map((product) => (
-                  <Grid item xs={6} sm={4} key={product.id}>
-                    <Paper
-                      sx={{
-                        p: 2,
-                        cursor: product.stockQuantity > 0 ? 'pointer' : 'not-allowed',
-                        opacity: product.stockQuantity > 0 ? 1 : 0.5,
-                      }}
-                      onClick={() => product.stockQuantity > 0 && addToCart(product)}
-                    >
-                      <Typography variant="h6">{product.name}</Typography>
-                      <Typography>KES {product.price}</Typography>
-                      <Typography variant="caption" color={product.stockQuantity > 0 ? 'textSecondary' : 'error'}>
-                        {product.stockQuantity > 0 ? `In stock: ${product.stockQuantity}` : 'Out of stock'}
-                      </Typography>
-                    </Paper>
-                  </Grid>
-                ))}
-            </Grid>
+          <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column' }}>
+            <Typography component="h2" variant="h6" color="primary" gutterBottom>
+              Products
+            </Typography>
+            {/* Product list will be added here */}
           </Paper>
         </Grid>
+
         <Grid item xs={12} md={4}>
-          <Paper sx={{
-            p: 2,
-            height: 'calc(100vh - 250px)',
-            display: 'flex',
-            flexDirection: 'column'
-          }}>
-            <Typography variant="h6" gutterBottom>
-              Shopping Cart
+          <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column', height: '100%' }}>
+            <Typography component="h2" variant="h6" color="primary" gutterBottom>
+              Cart
             </Typography>
             <List sx={{ flexGrow: 1, overflow: 'auto' }}>
               {cart.map((item) => (
-                <React.Fragment key={item.id}>
-                  <ListItem>
-                    <ListItemText
-                      primary={item.name}
-                      secondary={`KES ${item.price} x ${item.quantity} = KES ${(item.price * item.quantity).toFixed(2)}`}
-                    />
-                    <ListItemSecondaryAction>
-                      <IconButton
-                        edge="end"
-                        onClick={() => updateQuantity(item.id, -1)}
-                        disabled={isProcessing}
-                      >
-                        <RemoveIcon />
-                      </IconButton>
-                      <IconButton
-                        edge="end"
-                        onClick={() => updateQuantity(item.id, 1)}
-                        disabled={isProcessing}
-                      >
-                        <AddIcon />
-                      </IconButton>
-                      <IconButton
-                        edge="end"
-                        onClick={() => removeFromCart(item.id)}
-                        disabled={isProcessing}
-                      >
-                        <DeleteIcon />
-                      </IconButton>
-                    </ListItemSecondaryAction>
-                  </ListItem>
-                  <Divider />
-                </React.Fragment>
+                <ListItem key={item.id}>
+                  <ListItemText
+                    primary={item.name}
+                    secondary={`KES ${item.price} x ${item.quantity} = KES ${(item.price * item.quantity).toFixed(2)}`}
+                  />
+                  <ListItemSecondaryAction>
+                    <IconButton
+                      edge="end"
+                      onClick={() => updateQuantity(item.id, -1)}
+                      disabled={isProcessing}
+                    >
+                      <RemoveIcon />
+                    </IconButton>
+                    <IconButton
+                      edge="end"
+                      onClick={() => updateQuantity(item.id, 1)}
+                      disabled={isProcessing}
+                    >
+                      <AddIcon />
+                    </IconButton>
+                    <IconButton
+                      edge="end"
+                      onClick={() => removeFromCart(item.id)}
+                      disabled={isProcessing}
+                    >
+                      <DeleteIcon />
+                    </IconButton>
+                  </ListItemSecondaryAction>
+                </ListItem>
               ))}
             </List>
-            <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.100' }}>
-              <Typography variant="h6">
-                Total: KES {calculateTotal().toFixed(2)}
-              </Typography>
-            </Box>
+
+            <Typography variant="h6" sx={{ mt: 2 }}>
+              Total: KES {calculateTotal().toFixed(2)}
+            </Typography>
+
             <Button
               variant="contained"
               color="primary"
-              fullWidth
+              onClick={() => setCustomerDialogOpen(true)}
+              disabled={isProcessing}
               sx={{ mt: 2 }}
-              startIcon={isProcessing ? <CircularProgress size={24} color="inherit" /> : <PaymentIcon />}
-              onClick={handlePayment}
-              disabled={cart.length === 0 || isProcessing}
             >
-              {isProcessing ? 'Processing...' : 'Process Payment'}
+              {selectedCustomer ? `Selected: ${selectedCustomer.name}` : 'Select Customer'}
+            </Button>
+
+            <FormControl fullWidth sx={{ mt: 2 }}>
+              <InputLabel>Payment Method</InputLabel>
+              <Select
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
+                disabled={isProcessing}
+              >
+                {Object.values(PaymentMethod).map((method) => (
+                  <MenuItem key={method} value={method}>
+                    {method}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handlePayment}
+              disabled={isProcessing || !selectedCustomer || cart.length === 0}
+              sx={{ mt: 2 }}
+            >
+              {isProcessing ? 'Processing...' : 'Complete Sale'}
             </Button>
           </Paper>
         </Grid>
       </Grid>
-    </Box>
+
+      <Dialog open={customerDialogOpen} onClose={() => setCustomerDialogOpen(false)}>
+        <DialogTitle>Select Customer</DialogTitle>
+        <DialogContent>
+          <List>
+            {/* Customer list will be added here */}
+          </List>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCustomerDialogOpen(false)}>Cancel</Button>
+        </DialogActions>
+      </Dialog>
+    </Container>
   );
 };
 
