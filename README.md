@@ -12,6 +12,38 @@ A comprehensive ERP & POS System for Professional Salt Distribution Management
 
 </div>
 
+## 📋 Project Structure
+
+```plaintext
+CowSaltPro/
+├── src/                    # Source code
+│   ├── core/              # Core business logic
+│   │   ├── config.py      # Configuration management
+│   │   ├── constants.py   # Global constants
+│   │   └── types.py       # Type definitions
+│   ├── ui/                # User interface
+│   │   ├── views/         # Application screens
+│   │   ├── widgets/       # Reusable components
+│   │   └── utils/         # UI utilities
+│   ├── models/            # Data models
+│   ├── database/          # Database operations
+│   ├── services/          # Business services
+│   └── tests/             # Test suite
+├── docs/                  # Documentation
+│   ├── guides/           # User and developer guides
+│   └── api/              # API documentation
+├── scripts/              # Utility scripts
+│   ├── deployment/       # Deployment scripts
+│   └── development/      # Development tools
+├── config/              # Configuration files
+├── data/               # Application data
+├── logs/               # Log files
+└── Resources/          # Static resources
+    ├── icons/         # Application icons
+    ├── images/        # Images and graphics
+    └── themes/        # UI themes
+```
+
 ## 🌟 Features
 
 - **Modern UI/UX**
@@ -37,7 +69,7 @@ A comprehensive ERP & POS System for Professional Salt Distribution Management
 
 ### Windows Users
 
-1. Double-click `run_pyqt_app.bat` for automatic setup and launch
+1. Double-click `scripts/deployment/run_app.bat` for automatic setup and launch
    - Creates virtual environment (if needed)
    - Installs dependencies
    - Launches application
@@ -63,37 +95,60 @@ A comprehensive ERP & POS System for Professional Salt Distribution Management
 
 3. **Install Dependencies**
    ```bash
-   pip install -r requirements.txt
+   pip install -e ".[dev]"  # Install with development dependencies
+   # or
+   pip install .  # Install only runtime dependencies
    ```
 
 4. **Launch Application**
    ```bash
-   python main_pyqt.py
+   python -m cowsaltpro
    ```
 
-## 🔧 Technical Stack
+## 🔧 Development
 
-- **Frontend Framework**: PyQt6
-- **Data Visualization**: Matplotlib
-- **Data Processing**: NumPy, Pandas
-- **Database ORM**: SQLAlchemy
-- **Security**: Bcrypt
-- **Reporting**: ReportLab
-- **File Handling**: Pillow, OpenPyXL
+### Project Configuration
 
-## 📁 Project Structure
+The project uses `pyproject.toml` for configuration:
+- Build system: `setuptools`
+- Dependencies management
+- Development tools configuration:
+  - pytest
+  - black
+  - isort
+  - mypy
+  - flake8
 
+### Running Tests
+
+```bash
+pytest                 # Run all tests
+pytest -v              # Verbose output
+pytest --cov=src      # With coverage report
 ```
-CowSaltPro/
-├── main_pyqt.py          # Application entry point
-├── ui/                   # User interface components
-│   ├── views/           # Application screens
-│   ├── widgets/         # Reusable components
-│   └── utils/           # UI utilities
-├── Resources/           # Assets (icons, images)
-├── data/                # Database and data files
-└── models/             # Data models and DB interaction
+
+### Code Style
+
+```bash
+black src/            # Format code
+isort src/            # Sort imports
+mypy src/             # Type checking
+flake8 src/           # Linting
 ```
+
+## 📁 Configuration
+
+Application configuration is managed through:
+1. `config/config.json` - Main configuration file
+2. Environment variables
+3. Command line arguments
+
+### Configuration Hierarchy
+
+1. Command line arguments (highest priority)
+2. Environment variables
+3. User configuration file
+4. Default values (lowest priority)
 
 ## 🔐 Default Access
 
@@ -102,51 +157,16 @@ CowSaltPro/
 
 ⚠️ *Remember to change default credentials after first login*
 
-## 🛠️ Development
-
-### Requirements
-
-```plaintext
-PyQt6>=6.5.0
-matplotlib>=3.7.0
-numpy>=1.24.0
-pandas>=2.0.0
-SQLAlchemy>=2.0.0
-bcrypt>=4.0.0
-python-dateutil>=2.8.0
-Pillow>=10.0.0
-openpyxl>=3.1.0
-reportlab>=4.0.0
-```
-
-### Building from Source
-
-1. Clone the repository
-   ```bash
-   git clone https://github.com/brianwits/CowSaltPro-App.git
-   cd CowSaltPro-App
-   ```
-
-2. Install development dependencies
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. Run tests (if available)
-   ```bash
-   python -m pytest tests/
-   ```
-
 ## 📄 License
 
 Copyright © 2024 CowSalt. All rights reserved.
 
 ## 🤝 Support
 
-For support, please:
-- Open an issue on GitHub
+For support:
+- Check the [documentation](docs/)
+- Open an [issue](https://github.com/brianwits/CowSaltPro-App/issues)
 - Contact our support team
-- Check the documentation
 
 ---
 
