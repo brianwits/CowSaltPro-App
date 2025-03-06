@@ -42,3 +42,8 @@ temp/
 # Electron specific
 .webpack/
 .electron-builder/
+# Python specific
+__pycache__/
+*.py[cod]
+*.class
+venv/
