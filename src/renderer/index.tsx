@@ -24,13 +24,17 @@ class ErrorBoundary extends React.Component<
     console.error('Renderer Error:', error, errorInfo);
     
     // Log to main process if API is available
-    if (window.api?.send) {
-      window.api.send('log-message', {
-        level: 'error',
-        message: `Renderer Error: ${error.message}`,
-        stack: error.stack,
-        info: errorInfo
-      });
+    if (window.api) {
+      try {
+        window.api.send('log-message', {
+          level: 'error',
+          message: `Renderer Error: ${error.message}`,
+          stack: error.stack,
+          info: errorInfo
+        });
+      } catch (e) {
+        console.error('Failed to send error to main process:', e);
+      }
     }
   }
 
@@ -123,49 +127,74 @@ function initializeApp() {
     <div class="spinner"></div>
     <div class="loading-text">Loading CowSalt Pro...</div>
   `;
-  document.body.appendChild(loadingElement);
+  
+  // Only append if initial loader is already gone
+  const initialLoader = document.getElementById('initial-loader');
+  if (!initialLoader) {
+    document.body.appendChild(loadingElement);
+  }
   
   try {
     // Locate root element
-const container = document.getElementById('root');
-if (!container) {
-  throw new Error('Failed to find the root element');
-}
+    const container = document.getElementById('root');
+    if (!container) {
+      throw new Error('Failed to find the root element');
+    }
 
     // Create React root and render app
-const root = createRoot(container);
-root.render(
-      <ErrorBoundary>
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-      </ErrorBoundary>
-    );
+    const root = createRoot(container);
     
-    // Remove loading indicator after rendering completes
-    setTimeout(() => {
-      const loading = document.getElementById('app-loading');
-      if (loading) {
-        loading.classList.add('fade-out');
-        setTimeout(() => {
-          if (loading.parentNode) {
-            loading.parentNode.removeChild(loading);
-          }
-        }, 500);
+    // Use RAF to ensure we're not blocking the main thread
+    requestAnimationFrame(() => {
+      root.render(
+        <ErrorBoundary>
+          <React.StrictMode>
+            <App />
+          </React.StrictMode>
+        </ErrorBoundary>
+      );
+      
+      // Mark first render for performance tracking
+      if (typeof window.markFirstRender === 'function') {
+        window.markFirstRender();
       }
-    }, 1000);
-    
-    // Log performance metrics
-    const endTime = performance.now();
-    console.log(`App rendered in ${(endTime - startTime).toFixed(2)}ms`);
-    
-    // Notify main process that app is ready
-    if (window.api?.send) {
-      window.api.send('app-ready', { 
-        renderTime: endTime - startTime,
-        success: true
-      });
-    }
+      
+      // Remove loading indicator after rendering completes
+      setTimeout(() => {
+        const loading = document.getElementById('app-loading');
+        if (loading) {
+          loading.classList.add('fade-out');
+          setTimeout(() => {
+            if (loading.parentNode) {
+              loading.parentNode.removeChild(loading);
+            }
+          }, 500);
+        }
+        
+        // Remove initial loader too if it's still there
+        const initialLoader = document.getElementById('initial-loader');
+        if (initialLoader && typeof window.markFirstRender === 'function') {
+          window.markFirstRender();
+        }
+      }, 500);
+      
+      // Log performance metrics
+      const endTime = performance.now();
+      console.log(`App rendered in ${(endTime - startTime).toFixed(2)}ms`);
+      
+      // Notify main process that app is ready
+      if (window.api) {
+        try {
+          window.api.send('app-ready', { 
+            renderTime: endTime - startTime,
+            success: true,
+            timestamp: new Date().toISOString()
+          });
+        } catch (e) {
+          console.error('Failed to send ready state to main process:', e);
+        }
+      }
+    });
   } catch (error) {
     console.error('Failed to initialize app:', error);
     
@@ -234,13 +263,43 @@ root.render(
     }
     
     // Notify main process of error
-    if (window.api?.send) {
-      window.api.send('app-ready', { 
-        success: false,
-        error: String(error)
-      });
+    if (window.api) {
+      try {
+        window.api.send('app-ready', { 
+          success: false,
+          error: String(error),
+          timestamp: new Date().toISOString()
+        });
+      } catch (e) {
+        console.error('Failed to send error to main process:', e);
+      }
     }
   }
+}
+
+// Wait for DOM to be ready before initializing
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeApp);
+} else {
+  // DOM already loaded, initialize immediately
+  initializeApp();
+}
+
+// Force GPU rendering if available
+if (document.body) {
+  const forceGpu = document.createElement('div');
+  forceGpu.style.cssText = `
+    position: absolute;
+    top: -9999px;
+    left: -9999px;
+    width: 1px;
+    height: 1px;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    perspective: 1000px;
+    transform-style: preserve-3d;
+  `;
+  document.body.appendChild(forceGpu);
 }
 
 // Define the API interface to fix TypeScript errors
@@ -248,19 +307,21 @@ declare global {
   interface Window {
     api?: {
       send: (channel: string, data: any) => void;
-      on: (channel: string, callback: (...args: any[]) => void) => void;
-      invoke: <T>(channel: string, data?: any) => Promise<T>;
+      on?: (channel: string, callback: (...args: any[]) => void) => void;
+      invoke?: <T>(channel: string, data?: any) => Promise<T>;
       platform?: string;
       isDev?: boolean;
+      utils?: {
+        checkRendering: () => Promise<boolean>;
+        forceRepaint: () => boolean;
+      };
+    };
+    markFirstRender?: () => void;
+    __loadTiming?: {
+      start: number;
+      domReady: number | null;
+      firstRender: number | null;
+      fullyLoaded: number | null;
     };
   }
-}
-
-// Add a small delay to ensure DOM is ready
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
-    setTimeout(initializeApp, 50);
-  });
-} else {
-  setTimeout(initializeApp, 50);
 }

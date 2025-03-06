@@ -284,4 +284,12 @@ class DataManager(QObject):
             raise
         finally:
             if conn:
-                conn.close() 
+                conn.close()
+    
+    def close(self):
+        """Close any open connections when application exits"""
+        self.logger.info("Closing data manager and ensuring all connections are closed")
+        # SQLite connections are already closed after each operation
+        # This method exists to provide a clean shutdown interface 
+        # for the application to call when closing
+        return True 

@@ -39,6 +39,11 @@
         flex-direction: column;
       }
       
+      /* Custom repaint trigger for GPU issues */
+      html {
+        --force-repaint: 1;
+      }
+      
       /* Initial loading indicator shown before JS loads */
       #initial-loader {
         position: fixed;
@@ -52,6 +57,7 @@
         justify-content: center;
         background-color: #fafafa;
         z-index: 9999;
+        transition: opacity 0.3s ease;
       }
       
       @keyframes spinner {
@@ -82,6 +88,38 @@
         0% { opacity: 0; }
         100% { opacity: 1; }
       }
+      
+      /* Debug info */
+      .debug-info {
+        position: fixed;
+        bottom: 10px;
+        left: 10px;
+        background: rgba(0,0,0,0.7);
+        color: white;
+        padding: 5px 10px;
+        border-radius: 4px;
+        font-family: monospace;
+        font-size: 10px;
+        z-index: 9999;
+        max-width: 400px;
+        overflow: hidden;
+      }
+      
+      .loading-progress {
+        width: 200px;
+        height: 4px;
+        background-color: #eee;
+        border-radius: 2px;
+        margin-top: 15px;
+        overflow: hidden;
+      }
+      
+      .loading-progress-bar {
+        height: 100%;
+        width: 0%;
+        background-color: #2196f3;
+        transition: width 0.3s ease;
+      }
     </style>
   </head>
   <body>
@@ -96,28 +134,122 @@
     <div id="initial-loader">
       <div class="loading-spinner"></div>
       <div class="loading-text">Loading CowSalt Pro...</div>
+      <div class="loading-progress">
+        <div class="loading-progress-bar" id="loading-progress-bar"></div>
+      </div>
     </div>
     
     <!-- Root element for React app -->
     <div id="root" class="fade-in"></div>
     
     <script>
+      // Simulated loading progress to improve perceived performance
+      (function() {
+        let progress = 0;
+        const progressBar = document.getElementById('loading-progress-bar');
+        
+        if (progressBar) {
+          const interval = setInterval(function() {
+            // Slow start, then faster
+            const increment = progress < 30 ? 0.5 : 
+                             progress < 60 ? 1 : 
+                             progress < 85 ? 0.5 : 0.1;
+                             
+            progress = Math.min(progress + increment, 90); // Only go to 90% - React will finish the rest
+            progressBar.style.width = progress + '%';
+            
+            if (progress >= 90) {
+              clearInterval(interval);
+            }
+          }, 50);
+        }
+      })();
+      
+      // Setup performance monitoring
+      window.__loadTiming = {
+        start: performance.now(),
+        domReady: null,
+        firstRender: null,
+        fullyLoaded: null
+      };
+      
       // Remove the initial loader once the app is rendered
       document.addEventListener('DOMContentLoaded', function() {
-        // The app.js will handle removing this once React is initialized
-        // But we'll add a fallback timeout in case something goes wrong
+        window.__loadTiming.domReady = performance.now();
+        
+        // Add debug info element when in development
+        if (process.env.NODE_ENV === 'development') {
+          const debugInfo = document.createElement('div');
+          debugInfo.className = 'debug-info';
+          debugInfo.id = 'debug-info';
+          debugInfo.innerText = 'DOM Ready: Waiting for React...';
+          document.body.appendChild(debugInfo);
+          
+          // Update debug info periodically
+          setInterval(function() {
+            const timings = window.__loadTiming;
+            const now = performance.now();
+            const debugEl = document.getElementById('debug-info');
+            
+            if (debugEl) {
+              debugEl.innerText = 
+                `Start: 0ms\n` +
+                `DOM Ready: ${Math.round(timings.domReady - timings.start)}ms\n` +
+                `First Render: ${timings.firstRender ? Math.round(timings.firstRender - timings.start) + 'ms' : 'Pending...'}\n` +
+                `Fully Loaded: ${timings.fullyLoaded ? Math.round(timings.fullyLoaded - timings.start) + 'ms' : 'Pending...'}\n` +
+                `Elapsed: ${Math.round(now - timings.start)}ms`;
+            }
+          }, 500);
+        }
+        
+        // The React app will handle removing the loader when it's ready
+        // But add a fallback in case the React initialization fails
         setTimeout(function() {
           const initialLoader = document.getElementById('initial-loader');
-          if (initialLoader && initialLoader.parentNode) {
-            initialLoader.style.opacity = '0';
-            initialLoader.style.transition = 'opacity 0.5s ease';
-            setTimeout(function() {
-              if (initialLoader.parentNode) {
-                initialLoader.parentNode.removeChild(initialLoader);
+          const rootElement = document.getElementById('root');
+          
+          // If root is still empty, something might be wrong with React initialization
+          if (rootElement && rootElement.children.length === 0) {
+            if (document.getElementById('debug-info')) {
+              document.getElementById('debug-info').innerText += '\nWARNING: React not initialized after 5sec!';
+            }
+            
+            // Keep the loader visible but update its text
+            if (initialLoader) {
+              const loadingText = initialLoader.querySelector('.loading-text');
+              if (loadingText) {
+                loadingText.textContent = 'Still loading... taking longer than expected';
               }
-            }, 500);
+            }
+            
+            // After 10 seconds, show error
+            setTimeout(function() {
+              if (rootElement && rootElement.children.length === 0) {
+                if (initialLoader) {
+                  initialLoader.innerHTML = `
+                    <div style="text-align: center; color: #d32f2f; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); max-width: 80%;">
+                      <h2 style="margin-bottom: 15px;">Application Failed to Initialize</h2>
+                      <p style="margin-bottom: 15px;">The CowSalt Pro application failed to load correctly. This might be due to:</p>
+                      <ul style="text-align: left; margin-bottom: 15px;">
+                        <li>Graphics driver or WebGL issues</li>
+                        <li>Missing or corrupted application files</li>
+                        <li>Insufficient system resources</li>
+                      </ul>
+                      <button onclick="window.location.reload()" style="padding: 10px 20px; background: #2196f3; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                        Reload Application
+                      </button>
+                    </div>
+                  `;
+                }
+              }
+            }, 5000);
           }
-        }, 3000); // 3 second fallback
+        }, 5000);
+      });
+      
+      // Record when the first render happens
+      window.addEventListener('load', function() {
+        window.__loadTiming.fullyLoaded = performance.now();
       });
       
       // Handle global errors
@@ -147,6 +279,30 @@
           document.getElementById('initial-loader').appendChild(errorMessage);
         }
       });
+      
+      // Function for React to call when first render is complete
+      window.markFirstRender = function() {
+        window.__loadTiming.firstRender = performance.now();
+        
+        // Update progress bar to 100%
+        const progressBar = document.getElementById('loading-progress-bar');
+        if (progressBar) {
+          progressBar.style.width = '100%';
+        }
+        
+        // Fade out and remove the loader
+        setTimeout(function() {
+          const loader = document.getElementById('initial-loader');
+          if (loader) {
+            loader.style.opacity = '0';
+            setTimeout(function() {
+              if (loader.parentNode) {
+                loader.parentNode.removeChild(loader);
+              }
+            }, 300);
+          }
+        }, 200);
+      };
     </script>
   </body>
 </html> 

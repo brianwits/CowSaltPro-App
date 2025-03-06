@@ -66,7 +66,8 @@ const getWebpackConfigs = async () => {
         child_process: false
       }
     },
-    devtool: isDevelopment ? 'source-map' : false,
+    // Use source maps in development, none in production for better performance
+    devtool: isDevelopment ? 'eval-source-map' : false,
     plugins: [
       new ForkTsCheckerWebpackPlugin({
         async: true, 
@@ -88,7 +89,8 @@ const getWebpackConfigs = async () => {
       new webpack.DefinePlugin({
         'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development'),
         'process.env.PORT': JSON.stringify(port),
-        'process.type': JSON.stringify(process.type || 'renderer')
+        'process.type': JSON.stringify(process.type || 'renderer'),
+        'global': 'window',
       }),
       // Add polyfills for node modules
       new webpack.ProvidePlugin({
@@ -148,7 +150,8 @@ const getWebpackConfigs = async () => {
 
   const rendererConfig = {
     ...commonConfig,
-    target: isDevelopment ? 'web' : 'electron-renderer',
+    // Always use electron-renderer for consistency between dev and prod
+    target: 'electron-renderer',
     entry: {
       renderer: './src/renderer/index.tsx',
     },
@@ -220,7 +223,12 @@ const getWebpackConfigs = async () => {
         filename: isDevelopment ? '[name].css' : '[name].[contenthash].css',
         chunkFilename: isDevelopment ? '[id].css' : '[id].[contenthash].css',
       }),
-      new CleanWebpackPlugin(),
+      new CleanWebpackPlugin({
+        // Don't remove main.js and preload.js in production
+        cleanOnceBeforeBuildPatterns: isDevelopment 
+          ? ['**/*'] 
+          : ['**/*', '!main.js', '!preload.js'],
+      }),
       new ESLintPlugin({
         extensions: ['ts', 'tsx'],
         emitError: false,
