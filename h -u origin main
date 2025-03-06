@@ -1,0 +1,5 @@
+[33mcommit 9a5ad078ddc2a75102fb1ce20155a873aaff0850[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m
+Author: BRIAN MUGENDI <brianwits@gmail.com>
+Date:   Fri Mar 7 00:50:46 2025 +0300
+
+    Update .gitignore to exclude Python-specific files
