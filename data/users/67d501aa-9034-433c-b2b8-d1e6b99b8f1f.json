@@ -1,0 +1,13 @@
+{
+  "user_id": "67d501aa-9034-433c-b2b8-d1e6b99b8f1f",
+  "username": "Brian",
+  "full_name": "Brian Mugendi",
+  "role": "admin",
+  "email": "brianwits@gmail.com",
+  "created_at": "2025-03-07T15:16:39.783322",
+  "last_login": "2025-03-07T15:17:02.363614",
+  "password_hash": {
+    "salt": "835f5fba140a2c3755eee4daddef8ece47f40720c0fa86c2442d02167f1db293",
+    "key": "ab65aed54cdd7a794b9235cfe8d10bfa50634e48131cd034537e4961f51d01f5edd4e006ccd69306a0ce5a41b58d0a316700716bb63ec49b98ba01de4cf601179004573aa21a0307ee99eba314b772e8df0fcd364a4f9a4a9538a72c41fad5eba647af638e11aeb1abed792a11259fc8e6fa58dbb4cb117fff4c5df72d5120f9"
+  }
+}

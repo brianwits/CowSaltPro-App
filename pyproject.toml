@@ -1,18 +1,64 @@
 [build-system]
-requires = ["setuptools>=42", "wheel"]
+requires = ["setuptools>=45", "wheel", "pip>=21"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "cowsaltpro"
 version = "1.0.0"
-description = "ERP & POS System for Cow Salt Production"
+description = "A professional cattle salt management system"
+readme = "README.md"
 requires-python = ">=3.8"
-dependencies = [
-    "pandas",
-    "plotly",
-    "pyqt6",
-    "matplotlib",
-    "sqlalchemy",
-    "bcrypt",
-    "uuid",
+license = { text = "Proprietary" }
+authors = [
+    { name = "CowSalt Pro Team", email = "support@cowsaltpro.com" }
 ]
+dependencies = [
+    "PyQt6>=6.5.0",
+    "matplotlib>=3.7.0",
+    "numpy>=1.24.0",
+    "pandas>=2.0.0",
+    "SQLAlchemy>=2.0.0",
+    "bcrypt>=4.0.0",
+    "python-dateutil>=2.8.0",
+    "Pillow>=10.0.0",
+    "openpyxl>=3.1.0",
+    "reportlab>=4.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "black>=23.0",
+    "isort>=5.0",
+    "flake8>=6.0",
+    "mypy>=1.0",
+]
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.pytest.ini_options]
+testpaths = ["src/tests"]
+python_files = ["test_*.py", "*_test.py"]
+addopts = "-v --cov=src"
+
+[tool.black]
+line-length = 100
+target-version = ["py38"]
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+line_length = 100
+multi_line_output = 3
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+
+[project.scripts]
+cowsaltpro = "cowsaltpro.main:main"

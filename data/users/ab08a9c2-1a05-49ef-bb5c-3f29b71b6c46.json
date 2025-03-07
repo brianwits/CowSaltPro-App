@@ -5,10 +5,10 @@
   "role": "admin",
   "email": "admin@example.com",
   "created_at": "2025-03-06T21:57:45.654142",
-  "last_login": "2025-03-06T22:07:20.429500",
+  "last_login": "2025-03-07T15:17:38.805280",
   "password_hash": {
     "salt": "c77c7dd2e86cbf8bfdeb161135a7719ae657a92e6e22639093ec6a00e61fb31b",
     "key": "9a08946be7bbedd07a7bed6919026f4bd502cff2ccc87d9b288011ec67523b68827f5dbd8572b82eb548827d3d2ea254207f5f916930ae5e41e58c36544fb0c5269ad74622eb31d6b101dc5b11fdeeaf8761bcfd219d79669de7abf6134ab2a8007356988a9da85e975b7f5a962bc8f12ed054e32dcc5d58c9f003c6fc30fff6"
   },
-  "session_token": "636fc826-5643-4370-b153-8e2bcbc79db7"
+  "session_token": "5e026edd-9801-49cd-bf23-500e5007436b"
 }

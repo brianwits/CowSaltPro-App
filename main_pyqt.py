@@ -27,6 +27,9 @@ from ui.views.settings import SettingsView
 from ui.views.login import LoginView
 from ui.views.reports import ReportsView
 from ui.views.user_management import UserManagementView
+from ui.views.production import ProductionView
+from ui.views.formula import FormulaView
+from ui.views.pos import POSView
 
 # Import utilities
 from ui.utils.logger import get_logger
@@ -199,6 +202,8 @@ class MainWindow(QMainWindow):
         self.nav_buttons["home"] = SidebarButton("Dashboard", "dashboard")
         self.nav_buttons["inventory"] = SidebarButton("Inventory", "inventory")
         self.nav_buttons["pos"] = SidebarButton("Point of Sale", "pos")
+        self.nav_buttons["production"] = SidebarButton("Production", "production")
+        self.nav_buttons["formula"] = SidebarButton("Formulas", "formula")
         self.nav_buttons["ledger"] = SidebarButton("Stores Ledger", "ledger")
         self.nav_buttons["cashbook"] = SidebarButton("Cash Book", "cashbook")
         self.nav_buttons["payments"] = SidebarButton("Payments", "payments")
@@ -244,18 +249,22 @@ class MainWindow(QMainWindow):
             # Create views
             self.home_view = HomeView()
             self.inventory_view = InventoryView()
-            self.pos_view = QWidget()  # Placeholder for POS view
+            self.pos_view = POSView()
+            self.production_view = ProductionView(self.data_manager)
+            self.formula_view = FormulaView(self.data_manager)
             self.ledger_view = LedgerView()
             self.cashbook_view = CashbookView()
             self.payments_view = PaymentsView()
             self.reports_view = ReportsView()
-            self.user_management_view = UserManagementView()
+            self.user_management_view = UserManagementView(self)
             self.settings_view = SettingsView()
             
             # Add views to tab widget
             self.tabs.addWidget(self.home_view)
             self.tabs.addWidget(self.inventory_view)
             self.tabs.addWidget(self.pos_view)
+            self.tabs.addWidget(self.production_view)
+            self.tabs.addWidget(self.formula_view)
             self.tabs.addWidget(self.ledger_view)
             self.tabs.addWidget(self.cashbook_view)
             self.tabs.addWidget(self.payments_view)
@@ -267,12 +276,14 @@ class MainWindow(QMainWindow):
             self.nav_buttons["home"].clicked.connect(lambda: self.switch_view(0, "home"))
             self.nav_buttons["inventory"].clicked.connect(lambda: self.switch_view(1, "inventory"))
             self.nav_buttons["pos"].clicked.connect(lambda: self.switch_view(2, "pos"))
-            self.nav_buttons["ledger"].clicked.connect(lambda: self.switch_view(3, "ledger"))
-            self.nav_buttons["cashbook"].clicked.connect(lambda: self.switch_view(4, "cashbook"))
-            self.nav_buttons["payments"].clicked.connect(lambda: self.switch_view(5, "payments"))
-            self.nav_buttons["reports"].clicked.connect(lambda: self.switch_view(6, "reports"))
-            self.nav_buttons["users"].clicked.connect(lambda: self.switch_view(7, "users"))
-            self.nav_buttons["settings"].clicked.connect(lambda: self.switch_view(8, "settings"))
+            self.nav_buttons["production"].clicked.connect(lambda: self.switch_view(3, "production"))
+            self.nav_buttons["formula"].clicked.connect(lambda: self.switch_view(4, "formula"))
+            self.nav_buttons["ledger"].clicked.connect(lambda: self.switch_view(5, "ledger"))
+            self.nav_buttons["cashbook"].clicked.connect(lambda: self.switch_view(6, "cashbook"))
+            self.nav_buttons["payments"].clicked.connect(lambda: self.switch_view(7, "payments"))
+            self.nav_buttons["reports"].clicked.connect(lambda: self.switch_view(8, "reports"))
+            self.nav_buttons["users"].clicked.connect(lambda: self.switch_view(9, "users"))
+            self.nav_buttons["settings"].clicked.connect(lambda: self.switch_view(10, "settings"))
             
             # Set initial view
             self.switch_view(0, "home")

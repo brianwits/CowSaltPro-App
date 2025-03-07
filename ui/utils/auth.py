@@ -414,6 +414,120 @@ class AuthManager(QObject):
             self.logger.error(f"Delete user error: {str(e)}")
             return False, f"Delete user error: {str(e)}"
     
+    def update_user(self, user_data):
+        """Update a user's information"""
+        if not self.is_authenticated():
+            return False, "Not authenticated"
+        
+        # Only allow user updates for admin users or the user themselves
+        if self.current_user.role != UserRole.ADMIN and self.current_user.user_id != user_data.get('user_id'):
+            return False, "Not authorized to update this user"
+        
+        # Get user_id
+        user_id = user_data.get('user_id')
+        if not user_id:
+            return False, "User ID is required"
+        
+        try:
+            user_file = self.users_dir / f"{user_id}.json"
+            if not user_file.exists():
+                return False, "User not found"
+            
+            # Read existing user data
+            with open(user_file, 'r') as f:
+                existing_data = json.load(f)
+            
+            # Update fields (except username and password)
+            existing_data['full_name'] = user_data.get('full_name', existing_data.get('full_name', ''))
+            existing_data['email'] = user_data.get('email', existing_data.get('email', ''))
+            
+            # Only admins can change roles
+            if self.current_user.role == UserRole.ADMIN:
+                existing_data['role'] = user_data.get('role', existing_data.get('role', UserRole.VIEWER))
+            
+            # Save updated user
+            with open(user_file, 'w') as f:
+                json.dump(existing_data, f, indent=2)
+            
+            self.logger.info(f"User updated: {existing_data.get('username')} ({user_id})")
+            return True, "User updated successfully"
+        except Exception as e:
+            self.logger.error(f"Update user error: {str(e)}")
+            return False, f"Update user error: {str(e)}"
+    
+    def reset_password(self, user_id, new_password, require_change=False):
+        """Reset a user's password (admin only or user themselves)"""
+        if not self.is_authenticated():
+            return False, "Not authenticated"
+        
+        # Only allow password resets for admin users or the user themselves
+        if self.current_user.role != UserRole.ADMIN and self.current_user.user_id != user_id:
+            return False, "Not authorized to reset this user's password"
+        
+        try:
+            user_file = self.users_dir / f"{user_id}.json"
+            if not user_file.exists():
+                return False, "User not found"
+            
+            # Read existing user data
+            with open(user_file, 'r') as f:
+                data = json.load(f)
+                username = data.get('username', 'Unknown')
+            
+            # Hash the new password
+            password_hash = self._hash_password(new_password)
+            
+            # Update the password hash
+            data['password_hash'] = password_hash
+            
+            # Set the password change requirement flag if needed
+            if require_change:
+                data['require_password_change'] = True
+            
+            # Set password change timestamp
+            data['password_changed_at'] = datetime.datetime.now().isoformat()
+            
+            # Save updated user
+            with open(user_file, 'w') as f:
+                json.dump(data, f, indent=2)
+            
+            self.logger.info(f"Password reset for user: {username} ({user_id})")
+            return True, "Password reset successfully"
+        except Exception as e:
+            self.logger.error(f"Password reset error: {str(e)}")
+            return False, f"Password reset error: {str(e)}"
+    
+    def update_user_permissions(self, user_id, permissions):
+        """Update a user's custom permissions (admin only)"""
+        if not self.is_authenticated():
+            return False, "Not authenticated"
+        
+        if self.current_user.role != UserRole.ADMIN:
+            return False, "Not authorized to modify permissions"
+        
+        try:
+            user_file = self.users_dir / f"{user_id}.json"
+            if not user_file.exists():
+                return False, "User not found"
+            
+            # Read existing user data
+            with open(user_file, 'r') as f:
+                data = json.load(f)
+                username = data.get('username', 'Unknown')
+            
+            # Update permissions
+            data['permissions'] = permissions
+            
+            # Save updated user
+            with open(user_file, 'w') as f:
+                json.dump(data, f, indent=2)
+            
+            self.logger.info(f"Permissions updated for user: {username} ({user_id})")
+            return True, "Permissions updated successfully"
+        except Exception as e:
+            self.logger.error(f"Update permissions error: {str(e)}")
+            return False, f"Update permissions error: {str(e)}"
+    
     def has_permission(self, permission):
         """Check if current user has a specific permission"""
         if not self.is_authenticated():

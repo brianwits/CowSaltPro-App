@@ -80,6 +80,70 @@ class DataManager(QObject):
             )
             ''')
             
+            # Create production_batches table
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS production_batches (
+                batch_id TEXT PRIMARY KEY,
+                creation_date TEXT NOT NULL,
+                completion_date TEXT,
+                status TEXT NOT NULL,
+                production_quantity REAL NOT NULL,
+                notes TEXT
+            )
+            ''')
+            
+            # Create batch_ingredients table
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS batch_ingredients (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                batch_id TEXT NOT NULL,
+                ingredient_id TEXT NOT NULL,
+                quantity REAL NOT NULL,
+                unit TEXT NOT NULL,
+                FOREIGN KEY (batch_id) REFERENCES production_batches(batch_id)
+            )
+            ''')
+            
+            # Create quality_control table
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS quality_control (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                batch_id TEXT NOT NULL,
+                test_date TEXT NOT NULL,
+                test_type TEXT NOT NULL,
+                test_result TEXT NOT NULL,
+                pass_fail TEXT NOT NULL,
+                notes TEXT,
+                tested_by TEXT NOT NULL,
+                FOREIGN KEY (batch_id) REFERENCES production_batches(batch_id)
+            )
+            ''')
+            
+            # Create formulas table for salt mix formulas
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS formulas (
+                formula_id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT,
+                created_date TEXT NOT NULL,
+                last_modified TEXT NOT NULL,
+                version TEXT NOT NULL,
+                is_active INTEGER NOT NULL
+            )
+            ''')
+            
+            # Create formula_ingredients table
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS formula_ingredients (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                formula_id TEXT NOT NULL,
+                ingredient_id TEXT NOT NULL,
+                quantity REAL NOT NULL,
+                unit TEXT NOT NULL,
+                FOREIGN KEY (formula_id) REFERENCES formulas(formula_id)
+            )
+            ''')
+            
             conn.commit()
             self.logger.info("Database initialized successfully")
         except Exception as e:
@@ -279,6 +343,325 @@ class DataManager(QObject):
             raise Exception(f"Database error: {str(sql_e)}")
         except Exception as e:
             self.logger.error(f"Error adding payment: {str(e)}", exc_info=True)
+            if conn:
+                conn.rollback()
+            raise
+        finally:
+            if conn:
+                conn.close()
+    
+    def get_production_batches(self):
+        """Get all production batches"""
+        self.logger.info("Fetching production batches")
+        conn = None
+        try:
+            conn = self._get_connection()
+            query = "SELECT * FROM production_batches ORDER BY creation_date DESC"
+            df = pd.read_sql_query(query, conn)
+            self.logger.info(f"Retrieved {len(df)} production batches")
+            return df
+        except Exception as e:
+            self.logger.error(f"Error fetching production batches: {str(e)}", exc_info=True)
+            return pd.DataFrame()
+        finally:
+            if conn:
+                conn.close()
+    
+    def get_batch_details(self, batch_id):
+        """Get details for a specific batch including ingredients and quality tests"""
+        self.logger.info(f"Fetching details for batch: {batch_id}")
+        conn = None
+        try:
+            conn = self._get_connection()
+            
+            # Get batch information
+            batch_query = "SELECT * FROM production_batches WHERE batch_id = ?"
+            batch_df = pd.read_sql_query(batch_query, conn, params=(batch_id,))
+            
+            # Get ingredients
+            ingredients_query = """
+                SELECT bi.*, p.name as ingredient_name 
+                FROM batch_ingredients bi
+                LEFT JOIN products p ON bi.ingredient_id = p.product_id
+                WHERE bi.batch_id = ?
+            """
+            ingredients_df = pd.read_sql_query(ingredients_query, conn, params=(batch_id,))
+            
+            # Get quality control tests
+            qc_query = "SELECT * FROM quality_control WHERE batch_id = ? ORDER BY test_date DESC"
+            qc_df = pd.read_sql_query(qc_query, conn, params=(batch_id,))
+            
+            return {
+                "batch": batch_df,
+                "ingredients": ingredients_df,
+                "quality_tests": qc_df
+            }
+        except Exception as e:
+            self.logger.error(f"Error fetching batch details: {str(e)}", exc_info=True)
+            return {"batch": pd.DataFrame(), "ingredients": pd.DataFrame(), "quality_tests": pd.DataFrame()}
+        finally:
+            if conn:
+                conn.close()
+    
+    def add_production_batch(self, batch_id, creation_date, production_quantity, status="In Progress", notes=None):
+        """Add a new production batch"""
+        self.logger.info(f"Adding production batch: {batch_id}, quantity: {production_quantity}")
+        
+        # Input validation
+        if not batch_id or not creation_date or production_quantity <= 0:
+            error_msg = "Invalid batch data: batch_id, creation_date are required and quantity must be > 0"
+            self.logger.error(error_msg)
+            raise ValueError(error_msg)
+            
+        conn = None
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            
+            # Use parameterized query to prevent SQL injection
+            cursor.execute(
+                """INSERT INTO production_batches 
+                   (batch_id, creation_date, status, production_quantity, notes) 
+                   VALUES (?, ?, ?, ?, ?)""",
+                (batch_id, creation_date, status, production_quantity, notes)
+            )
+            
+            # Verify that the insert succeeded
+            if cursor.rowcount <= 0:
+                conn.rollback()
+                raise Exception("Failed to insert production batch - no rows affected")
+                
+            conn.commit()
+            self.logger.info(f"Production batch added successfully: {batch_id}")
+            self.data_changed.emit("production_batches")
+            return True
+        except sqlite3.Error as sql_e:
+            self.logger.error(f"SQLite error adding batch: {str(sql_e)}", exc_info=True)
+            if conn:
+                conn.rollback()
+            raise Exception(f"Database error: {str(sql_e)}")
+        except Exception as e:
+            self.logger.error(f"Error adding batch: {str(e)}", exc_info=True)
+            if conn:
+                conn.rollback()
+            raise
+        finally:
+            if conn:
+                conn.close()
+    
+    def add_batch_ingredient(self, batch_id, ingredient_id, quantity, unit):
+        """Add an ingredient to a production batch"""
+        self.logger.info(f"Adding ingredient {ingredient_id} to batch {batch_id}")
+        
+        conn = None
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute(
+                """INSERT INTO batch_ingredients 
+                   (batch_id, ingredient_id, quantity, unit) 
+                   VALUES (?, ?, ?, ?)""",
+                (batch_id, ingredient_id, quantity, unit)
+            )
+            
+            if cursor.rowcount <= 0:
+                conn.rollback()
+                raise Exception("Failed to insert batch ingredient - no rows affected")
+                
+            conn.commit()
+            self.logger.info(f"Batch ingredient added successfully to batch: {batch_id}")
+            self.data_changed.emit("batch_ingredients")
+            return True
+        except Exception as e:
+            self.logger.error(f"Error adding batch ingredient: {str(e)}", exc_info=True)
+            if conn:
+                conn.rollback()
+            raise
+        finally:
+            if conn:
+                conn.close()
+    
+    def update_batch_status(self, batch_id, status, completion_date=None):
+        """Update the status of a production batch"""
+        self.logger.info(f"Updating batch {batch_id} status to {status}")
+        
+        conn = None
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            
+            if status.lower() == "completed" and completion_date:
+                cursor.execute(
+                    "UPDATE production_batches SET status = ?, completion_date = ? WHERE batch_id = ?",
+                    (status, completion_date, batch_id)
+                )
+            else:
+                cursor.execute(
+                    "UPDATE production_batches SET status = ? WHERE batch_id = ?",
+                    (status, batch_id)
+                )
+            
+            if cursor.rowcount <= 0:
+                conn.rollback()
+                raise Exception(f"Failed to update batch status - batch {batch_id} not found")
+                
+            conn.commit()
+            self.logger.info(f"Batch status updated successfully: {batch_id}")
+            self.data_changed.emit("production_batches")
+            return True
+        except Exception as e:
+            self.logger.error(f"Error updating batch status: {str(e)}", exc_info=True)
+            if conn:
+                conn.rollback()
+            raise
+        finally:
+            if conn:
+                conn.close()
+    
+    def add_quality_test(self, batch_id, test_date, test_type, test_result, pass_fail, tested_by, notes=None):
+        """Add a quality control test for a production batch"""
+        self.logger.info(f"Adding quality test for batch {batch_id}, type: {test_type}")
+        
+        conn = None
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute(
+                """INSERT INTO quality_control 
+                   (batch_id, test_date, test_type, test_result, pass_fail, notes, tested_by) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (batch_id, test_date, test_type, test_result, pass_fail, notes, tested_by)
+            )
+            
+            if cursor.rowcount <= 0:
+                conn.rollback()
+                raise Exception("Failed to insert quality test - no rows affected")
+                
+            conn.commit()
+            self.logger.info(f"Quality test added successfully for batch: {batch_id}")
+            self.data_changed.emit("quality_control")
+            return True
+        except Exception as e:
+            self.logger.error(f"Error adding quality test: {str(e)}", exc_info=True)
+            if conn:
+                conn.rollback()
+            raise
+        finally:
+            if conn:
+                conn.close()
+    
+    def get_formulas(self, active_only=True):
+        """Get all formulas, optionally filtering for active ones only"""
+        self.logger.info("Fetching formulas")
+        conn = None
+        try:
+            conn = self._get_connection()
+            query = "SELECT * FROM formulas"
+            if active_only:
+                query += " WHERE is_active = 1"
+            query += " ORDER BY name"
+            df = pd.read_sql_query(query, conn)
+            self.logger.info(f"Retrieved {len(df)} formulas")
+            return df
+        except Exception as e:
+            self.logger.error(f"Error fetching formulas: {str(e)}", exc_info=True)
+            return pd.DataFrame()
+        finally:
+            if conn:
+                conn.close()
+    
+    def get_formula_details(self, formula_id):
+        """Get details for a specific formula including ingredients"""
+        self.logger.info(f"Fetching details for formula: {formula_id}")
+        conn = None
+        try:
+            conn = self._get_connection()
+            
+            # Get formula information
+            formula_query = "SELECT * FROM formulas WHERE formula_id = ?"
+            formula_df = pd.read_sql_query(formula_query, conn, params=(formula_id,))
+            
+            # Get ingredients
+            ingredients_query = """
+                SELECT fi.*, p.name as ingredient_name 
+                FROM formula_ingredients fi
+                LEFT JOIN products p ON fi.ingredient_id = p.product_id
+                WHERE fi.formula_id = ?
+            """
+            ingredients_df = pd.read_sql_query(ingredients_query, conn, params=(formula_id,))
+            
+            return {
+                "formula": formula_df,
+                "ingredients": ingredients_df
+            }
+        except Exception as e:
+            self.logger.error(f"Error fetching formula details: {str(e)}", exc_info=True)
+            return {"formula": pd.DataFrame(), "ingredients": pd.DataFrame()}
+        finally:
+            if conn:
+                conn.close()
+    
+    def add_formula(self, formula_id, name, description, created_date, version="1.0", is_active=1):
+        """Add a new formula"""
+        self.logger.info(f"Adding formula: {name}, version: {version}")
+        
+        conn = None
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute(
+                """INSERT INTO formulas 
+                   (formula_id, name, description, created_date, last_modified, version, is_active) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (formula_id, name, description, created_date, created_date, version, is_active)
+            )
+            
+            if cursor.rowcount <= 0:
+                conn.rollback()
+                raise Exception("Failed to insert formula - no rows affected")
+                
+            conn.commit()
+            self.logger.info(f"Formula added successfully: {name}")
+            self.data_changed.emit("formulas")
+            return True
+        except Exception as e:
+            self.logger.error(f"Error adding formula: {str(e)}", exc_info=True)
+            if conn:
+                conn.rollback()
+            raise
+        finally:
+            if conn:
+                conn.close()
+    
+    def add_formula_ingredient(self, formula_id, ingredient_id, quantity, unit):
+        """Add an ingredient to a formula"""
+        self.logger.info(f"Adding ingredient {ingredient_id} to formula {formula_id}")
+        
+        conn = None
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute(
+                """INSERT INTO formula_ingredients 
+                   (formula_id, ingredient_id, quantity, unit) 
+                   VALUES (?, ?, ?, ?)""",
+                (formula_id, ingredient_id, quantity, unit)
+            )
+            
+            if cursor.rowcount <= 0:
+                conn.rollback()
+                raise Exception("Failed to insert formula ingredient - no rows affected")
+                
+            conn.commit()
+            self.logger.info(f"Formula ingredient added successfully to formula: {formula_id}")
+            self.data_changed.emit("formula_ingredients")
+            return True
+        except Exception as e:
+            self.logger.error(f"Error adding formula ingredient: {str(e)}", exc_info=True)
             if conn:
                 conn.rollback()
             raise
